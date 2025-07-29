@@ -1,0 +1,14 @@
+{
+    "SimulationConfig": {
+        "name": "my_simulation",
+        "temperature": 85.0,
+        "num_simulations": 1000,
+        "output_dir": "/custom/output/path",
+        "verbose": true
+    },
+    "ProcessConfig": {
+        "process_type": "accurate",
+        "max_workers": 8,
+        "timeout": 600.0
+    }
+}

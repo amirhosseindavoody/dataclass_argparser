@@ -1,0 +1,91 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+authors = [
+  {name = "Amirhossein Davoody", email = "amirhossein.davoody@gmail.com"},
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Utilities",
+]
+dependencies = []
+description = "A utility for creating command-line argument parsers from dataclasses"
+keywords = ["argparse", "dataclass", "cli", "command-line", "configuration"]
+license = {text = "MIT"}
+name = "dataclass-argparser"
+readme = "README.md"
+requires-python = ">=3.7"
+version = "1.0.0"
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "PyYAML"]
+test = ["pytest", "pytest-cov"]
+yaml = ["PyYAML"]
+
+[project.urls]
+Homepage = "https://github.com/amirhosseindavoody/dataclass_argparser"
+Repository = "https://github.com/amirhosseindavoody/dataclass_argparser"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dataclass_argparser"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "__pycache__",
+  "*.py[co]",
+  ".pytest_cache",
+  "**/__pycache__",
+  "**/*.py[co]",
+  "**/.pytest_cache",
+]
+include = [
+  "/src",
+  "/examples",
+  "/tests",
+  "/README.md",
+  "/pyproject.toml",
+]
+
+[tool.hatch.build]
+directory = "."
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.pytest.ini_options]
+python_classes = ["Test*"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = [
+  "*/tests/*",
+  "*/examples/*",
+]
+source = ["src/dataclass_argparser"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "if self.debug:",
+  "if settings.DEBUG",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if 0:",
+  "if __name__ == .__main__.:",
+]

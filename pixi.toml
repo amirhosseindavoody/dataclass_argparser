@@ -1,0 +1,45 @@
+[project]
+authors = ["Amirhossein Davoody <amirhossein.davoody@gmail.com>"]
+channels = ["conda-forge"]
+description = "A utility for creating command-line argument parsers from dataclasses"
+name = "dataclass-argparser"
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+version = "1.0.0"
+
+[dependencies]
+python = ">=3.7"
+pyyaml = ">=6.0.2,<7"
+
+[tasks]
+# Testing tasks
+test = "pytest tests/"
+test-coverage = "pytest --cov=src/dataclass_argparser --cov-report=html --cov-report=term tests/"
+test-verbose = "pytest -v tests/"
+
+# Example tasks
+run-basic-example = "python examples/basic_example.py --help"
+run-override-example = "python examples/override_example.py --help"
+
+# Build tasks
+build = "python -m build"
+clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/ htmlcov/"
+
+# Linting and formatting (optional, can be added if needed)
+format = "echo 'Add formatting tools like black if needed'"
+lint = "echo 'Add linting tools like ruff or flake8 if needed'"
+
+[tasks.test-all]
+cmd = """
+pytest tests/ &&
+python examples/basic_example.py --name test --temperature 25.0 &&
+python examples/override_example.py --config examples/example_config.json
+"""
+
+[tasks.demo]
+cmd = """
+echo "Running basic example with default values:" &&
+python examples/basic_example.py --name "Demo Run" --temperature 30.0 --num-simulations 50 &&
+echo "" &&
+echo "Running override example with config file:" &&
+python examples/override_example.py --config examples/example_config.json
+"""
