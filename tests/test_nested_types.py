@@ -1,4 +1,5 @@
 import dataclasses
+import json
 import pytest
 from dataclass_argparser.parser import DataclassArgParser
 
@@ -23,6 +24,24 @@ class SecondaryOuter:
         default_factory=Outer, metadata={"help": "Outer dataclass"}
     )
     label: str = dataclasses.field(default="main", metadata={"help": "Secondary label"})
+
+
+@dataclasses.dataclass
+class OuterWithList:
+    inners: list[Inner] = dataclasses.field(
+        default_factory=lambda: [Inner(), Inner(x=2, y="bar")],
+        metadata={"help": "List of Inner dataclasses"},
+    )
+    z: float = dataclasses.field(default=3.14, metadata={"help": "Outer z"})
+
+
+@dataclasses.dataclass
+class OuterWithTuple:
+    pair: tuple[Inner, Inner] = dataclasses.field(
+        default=(Inner(), Inner(x=2, y="bar")),
+        metadata={"help": "Tuple of Inner dataclasses"},
+    )
+    z: float = dataclasses.field(default=3.14, metadata={"help": "Outer z"})
 
 
 def test_nested_defaults():
@@ -136,3 +155,83 @@ def test_double_nested_combinations(
     assert cfg.outer.inner.y == expected_y
     assert cfg.outer.z == expected_z
     assert cfg.label == expected_label
+
+
+def test_list_of_dataclasses_defaults():
+    parser = DataclassArgParser(OuterWithList)
+    result = parser.parse([])
+    cfg = result["OuterWithList"]
+    assert isinstance(cfg.inners, list)
+    assert len(cfg.inners) == 2
+    assert isinstance(cfg.inners[0], Inner)
+    assert isinstance(cfg.inners[1], Inner)
+    assert cfg.inners[0].x == 1
+    assert cfg.inners[0].y == "foo"
+    assert cfg.inners[1].x == 2
+    assert cfg.inners[1].y == "bar"
+    assert cfg.z == 3.14
+
+
+# Note: CLI parsing for list of dataclasses is not supported by the parser, but config file loading is.
+def test_list_of_dataclasses_from_config(tmp_path):
+    config = {
+        "OuterWithList": {
+            "inners": [
+                {"x": 10, "y": "a"},
+                {"x": 20, "y": "b"},
+            ],
+            "z": 9.99,
+        }
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    parser = DataclassArgParser(OuterWithList)
+    result = parser.parse(["--config", str(config_path)])
+    cfg = result["OuterWithList"]
+    assert len(cfg.inners) == 2
+    assert isinstance(cfg.inners[0], Inner)
+    assert isinstance(cfg.inners[1], Inner)
+    assert cfg.inners[0].x == 10
+    assert cfg.inners[0].y == "a"
+    assert cfg.inners[1].x == 20
+    assert cfg.inners[1].y == "b"
+    assert cfg.z == 9.99
+
+
+def test_tuple_of_dataclasses_defaults():
+    parser = DataclassArgParser(OuterWithTuple)
+    result = parser.parse([])
+    cfg = result["OuterWithTuple"]
+    assert isinstance(cfg.pair, tuple)
+    assert len(cfg.pair) == 2
+    assert isinstance(cfg.pair[0], Inner)
+    assert isinstance(cfg.pair[1], Inner)
+    assert cfg.pair[0].x == 1
+    assert cfg.pair[0].y == "foo"
+    assert cfg.pair[1].x == 2
+    assert cfg.pair[1].y == "bar"
+    assert cfg.z == 3.14
+
+
+# Note: CLI parsing for tuple of dataclasses is not supported by the parser, but config file loading is.
+def test_tuple_of_dataclasses_from_config(tmp_path):
+    config = {
+        "OuterWithTuple": {
+            "pair": [{"x": 10, "y": "a"}, {"x": 20, "y": "b"}],
+            "z": 9.99,
+        }
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    parser = DataclassArgParser(OuterWithTuple)
+    result = parser.parse(["--config", str(config_path)])
+    cfg = result["OuterWithTuple"]
+    assert isinstance(cfg.pair, tuple)
+    assert isinstance(cfg.pair[0], Inner)
+    assert isinstance(cfg.pair[1], Inner)
+    assert len(cfg.pair) == 2
+    assert cfg.pair[0].x == 10
+    assert cfg.pair[0].y == "a"
+    assert cfg.pair[1].x == 20
+    assert cfg.pair[1].y == "b"
+    assert cfg.z == 9.99

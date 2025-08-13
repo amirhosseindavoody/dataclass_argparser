@@ -299,8 +299,37 @@ class DataclassArgParser:
                 if arg_key in parsed_args and parsed_args[arg_key] is not None:
                     value = parsed_args[arg_key]
 
-                # Recursively build nested dataclasses
-                if dataclasses.is_dataclass(arg_type):
+                # Handle tuple of dataclasses
+                if (
+                    hasattr(arg_type, "__origin__")
+                    and arg_type.__origin__ in (tuple, typing.Tuple)
+                    and all(
+                        dataclasses.is_dataclass(t)
+                        for t in getattr(arg_type, "__args__", [])
+                    )
+                ):
+                    elem_types = arg_type.__args__
+                    if isinstance(value, list) and len(value) == len(elem_types):
+                        value = tuple(
+                            t(**v) if isinstance(v, dict) else v
+                            for t, v in zip(elem_types, value)
+                        )
+
+                # Handle list of dataclasses
+                elif (
+                    hasattr(arg_type, "__origin__")
+                    and arg_type.__origin__ in (list, typing.List)
+                    and len(getattr(arg_type, "__args__", [])) == 1
+                    and dataclasses.is_dataclass(arg_type.__args__[0])
+                ):
+                    elem_type = arg_type.__args__[0]
+                    if isinstance(value, list):
+                        value = [
+                            elem_type(**v) if isinstance(v, dict) else v for v in value
+                        ]
+
+                # Handle nested dataclass
+                elif dataclasses.is_dataclass(arg_type):
                     # Config: get nested dict if present
                     nested_config = (
                         config_section.get(field_name, {})
@@ -308,7 +337,6 @@ class DataclassArgParser:
                         else {}
                     )
 
-                    # Recursively build, merging CLI and config
                     def merge_nested(cls_nested, prefix_nested, config_nested):
                         vals = {}
                         for f in dataclasses.fields(cls_nested):
