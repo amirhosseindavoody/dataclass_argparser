@@ -13,7 +13,7 @@ import dataclasses
 import json
 import os
 import typing
-from typing import Any, Dict, Literal, Type
+from typing import Any, Literal, Type
 
 try:
     import yaml
@@ -47,20 +47,22 @@ class DataclassArgParser:
         # python script.py --config config.yaml
     """
 
-    def __init__(self, *dataclass_types: Type[Any]):
+    def __init__(self, *dataclass_types: Type[Any]) -> None:
         """
-        Initialize the parser with one or more dataclass types.
+        Initialize the DataclassArgParser with one or more dataclass types.
 
         Args:
-            *dataclass_types: One or more dataclass types to generate arguments from
+            *dataclass_types: One or more dataclass types to generate arguments from.
         """
-        self.dataclass_types = dataclass_types
-        self.parser = argparse.ArgumentParser()
+        self.dataclass_types: tuple[Type[Any], ...] = dataclass_types
+        self.parser: argparse.ArgumentParser = argparse.ArgumentParser()
         self._add_config_argument()
         self._add_dataclass_arguments()
 
-    def _add_config_argument(self):
-        """Add the --config argument for loading configuration from files."""
+    def _add_config_argument(self) -> None:
+        """
+        Add the --config argument for loading configuration from YAML or JSON files.
+        """
         self.parser.add_argument(
             "--config",
             type=str,
@@ -68,19 +70,19 @@ class DataclassArgParser:
             help="Path to configuration file (YAML or JSON format)",
         )
 
-    def _load_config_file(self, config_path: str) -> Dict[str, Any]:
+    def _load_config_file(self, config_path: str) -> dict[str, Any]:
         """
         Load configuration from a YAML or JSON file.
 
         Args:
-            config_path: Path to the configuration file
+            config_path (str): Path to the configuration file.
 
         Returns:
-            Dictionary containing the configuration data
+            dict[str, Any]: Dictionary containing the configuration data.
 
         Raises:
-            FileNotFoundError: If the config file doesn't exist
-            ValueError: If the file format is not supported or invalid
+            FileNotFoundError: If the config file doesn't exist.
+            ValueError: If the file format is not supported or invalid.
         """
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -108,7 +110,17 @@ class DataclassArgParser:
                     "Supported formats are: .yaml, .yml, .json"
                 )
 
-    def _tuple_type_factory(self, tuple_type):
+    def _tuple_type_factory(self, tuple_type: Any) -> Any:
+        """
+        Return a function that parses a string into a tuple of the correct type and length.
+
+        Args:
+            tuple_type: The typing.Tuple type to parse.
+
+        Returns:
+            Callable[[str], tuple]: A function that parses a string into a tuple.
+        """
+
         def parse_tuple(s):
             try:
                 if s.startswith("(") and s.endswith(")"):
@@ -139,7 +151,17 @@ class DataclassArgParser:
 
         return parse_tuple
 
-    def _list_type_factory(self, list_type):
+    def _list_type_factory(self, list_type: Any) -> Any:
+        """
+        Return a function that parses a string into a list of the correct type.
+
+        Args:
+            list_type: The typing.List type to parse.
+
+        Returns:
+            Callable[[str], list]: A function that parses a string into a list.
+        """
+
         def parse_list(s):
             try:
                 if s.startswith("[") and s.endswith("]"):
@@ -170,8 +192,11 @@ class DataclassArgParser:
 
         return parse_list
 
-    def _add_dataclass_arguments(self):
-        """Add arguments to the parser based on dataclass fields, including nested dataclasses."""
+    def _add_dataclass_arguments(self) -> None:
+        """
+        Add arguments to the parser based on dataclass fields, including nested dataclasses.
+        Handles Literal, tuple, list, and nested dataclass types.
+        """
 
         def add_fields(cls, prefix=None):
             prefix = prefix or cls.__name__
@@ -262,9 +287,18 @@ class DataclassArgParser:
         for cls in self.dataclass_types:
             add_fields(cls)
 
-    def parse(self, args=None) -> Dict[str, Any]:
+    def parse(self, args: list[str] | None = None) -> dict[str, Any]:
         """
         Parse command-line arguments and return dataclass instances, including nested dataclasses.
+
+        Args:
+            args (list[str] | None): Optional list of arguments to parse. If None, uses sys.argv.
+
+        Returns:
+            dict[str, Any]: Dict mapping dataclass names to their instantiated objects with parsed values.
+
+        Raises:
+            SystemExit: If required fields (those without defaults) are not provided either as command-line arguments or in the config file.
         """
         parsed_args = vars(self.parser.parse_args(args))
 
