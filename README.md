@@ -154,7 +154,43 @@ class Config:
 - `float` - Float values
 - `bool` - Boolean values
 - `Literal` - Choice from predefined options
+- `list[T]` - List of values of type T (e.g., `list[int]`, `list[str]`)
+- `tuple[T1, T2, ...]` - Tuple of fixed types (e.g., `tuple[int, float, str]`)
 - Custom types (uses type name as metavar)
+
+### List and Tuple Arguments
+
+You can use list and tuple types in your dataclasses. The parser will handle them from the command line:
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class ListTupleConfig:
+  numbers: list[int] = field(default_factory=lambda: [1, 2, 3], metadata={"help": "A list of integers"})
+  coords: tuple[int, int, int] = field(default=(0, 0, 0), metadata={"help": "A tuple of three integers"})
+
+parser = DataclassArgParser(ListTupleConfig)
+result = parser.parse()
+cfg = result['ListTupleConfig']
+print(cfg.numbers)
+print(cfg.coords)
+```
+
+#### Command-line usage:
+
+```bash
+# List values can be provided as comma-separated or bracketed:
+python script.py --ListTupleConfig.numbers 4,5,6
+python script.py --ListTupleConfig.numbers "[7,8,9]"
+
+# Tuple values can be provided as comma-separated or parenthesized:
+python script.py --ListTupleConfig.coords 1,2,3
+python script.py --ListTupleConfig.coords "(4,5,6)"
+```
+
+The parser will convert these arguments to the correct Python types.
 
 ## Config File Formats
 
