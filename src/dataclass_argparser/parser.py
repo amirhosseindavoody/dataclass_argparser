@@ -108,102 +108,100 @@ class DataclassArgParser:
                     "Supported formats are: .yaml, .yml, .json"
                 )
 
-    def _add_dataclass_arguments(self):
-        """Add arguments to the parser based on dataclass fields."""
-
-        def tuple_type_factory(tuple_type):
-            # Returns a function that parses a string into a tuple of the correct type and length
-            def parse_tuple(s):
-                # Accepts formats like "(1, 2, 3)" or "1,2,3"
-                try:
-                    if s.startswith("(") and s.endswith(")"):
-                        s = s[1:-1]
-                    items = [item.strip() for item in s.split(",") if item.strip()]
-                    expected_types = tuple_type.__args__
-                    if len(items) != len(expected_types):
-                        raise argparse.ArgumentTypeError(
-                            f"Expected {len(expected_types)} values, got {len(items)}"
-                        )
-                    result = []
-                    for item, typ in zip(items, expected_types):
-                        # Support int, float, str, etc.
-                        try:
-                            value = (
-                                ast.literal_eval(item)
-                                if typ in (int, float, bool)
-                                else item
-                            )
-                            value = typ(value)
-                        except Exception:
-                            raise argparse.ArgumentTypeError(
-                                f"Could not convert '{item}' to {typ.__name__}"
-                            )
-                        result.append(value)
-                    return tuple(result)
-                except Exception as e:
-                    raise argparse.ArgumentTypeError(f"Invalid tuple value: {s} ({e})")
-
-            return parse_tuple
-
-        def list_type_factory(list_type):
-            # Returns a function that parses a string into a list of the correct type
-            def parse_list(s):
-                # Accepts formats like "[1, 2, 3]" or "1,2,3"
-                try:
-                    if s.startswith("[") and s.endswith("]"):
-                        s = s[1:-1]
-                    items = [item.strip() for item in s.split(",") if item.strip()]
-                    # Get the type of the list elements
-                    elem_type = (
-                        list_type.__args__[0]
-                        if hasattr(list_type, "__args__") and list_type.__args__
-                        else str
+    def _tuple_type_factory(self, tuple_type):
+        def parse_tuple(s):
+            try:
+                if s.startswith("(") and s.endswith(")"):
+                    s = s[1:-1]
+                items = [item.strip() for item in s.split(",") if item.strip()]
+                expected_types = tuple_type.__args__
+                if len(items) != len(expected_types):
+                    raise argparse.ArgumentTypeError(
+                        f"Expected {len(expected_types)} values, got {len(items)}"
                     )
-                    result = []
-                    for item in items:
-                        try:
-                            value = (
-                                ast.literal_eval(item)
-                                if elem_type in (int, float, bool)
-                                else item
-                            )
-                            value = elem_type(value)
-                        except Exception:
-                            raise argparse.ArgumentTypeError(
-                                f"Could not convert '{item}' to {elem_type.__name__}"
-                            )
-                        result.append(value)
-                    return result
-                except Exception as e:
-                    raise argparse.ArgumentTypeError(f"Invalid list value: {s} ({e})")
+                result = []
+                for item, typ in zip(items, expected_types):
+                    try:
+                        value = (
+                            ast.literal_eval(item)
+                            if typ in (int, float, bool)
+                            else item
+                        )
+                        value = typ(value)
+                    except Exception:
+                        raise argparse.ArgumentTypeError(
+                            f"Could not convert '{item}' to {typ.__name__}"
+                        )
+                    result.append(value)
+                return tuple(result)
+            except Exception as e:
+                raise argparse.ArgumentTypeError(f"Invalid tuple value: {s} ({e})")
 
-            return parse_list
+        return parse_tuple
 
-        for cls in self.dataclass_types:
+    def _list_type_factory(self, list_type):
+        def parse_list(s):
+            try:
+                if s.startswith("[") and s.endswith("]"):
+                    s = s[1:-1]
+                items = [item.strip() for item in s.split(",") if item.strip()]
+                elem_type = (
+                    list_type.__args__[0]
+                    if hasattr(list_type, "__args__") and list_type.__args__
+                    else str
+                )
+                result = []
+                for item in items:
+                    try:
+                        value = (
+                            ast.literal_eval(item)
+                            if elem_type in (int, float, bool)
+                            else item
+                        )
+                        value = elem_type(value)
+                    except Exception:
+                        raise argparse.ArgumentTypeError(
+                            f"Could not convert '{item}' to {elem_type.__name__}"
+                        )
+                    result.append(value)
+                return result
+            except Exception as e:
+                raise argparse.ArgumentTypeError(f"Invalid list value: {s} ({e})")
+
+        return parse_list
+
+    def _add_dataclass_arguments(self):
+        """Add arguments to the parser based on dataclass fields, including nested dataclasses."""
+
+        def add_fields(cls, prefix=None):
+            prefix = prefix or cls.__name__
             for field in dataclasses.fields(cls):
-                arg_name = f"--{cls.__name__}.{field.name}"
+                arg_name = f"--{prefix}.{field.name}"
                 arg_type = field.type if field.type is not dataclasses.MISSING else str
-                # Get field help text from metadata
                 description = field.metadata.get("help", "")
 
-                # Determine default value for help text
                 default_value = None
                 if field.default is not dataclasses.MISSING:
                     default_value = field.default
                 elif field.default_factory is not dataclasses.MISSING:
                     default_value = field.default_factory()
 
-                # Add default value to help text if available
                 if default_value is not None:
                     if description:
                         description = f"{description} (default: {default_value})"
                     else:
                         description = f"(default: {default_value})"
 
-                # Handle Literal types
+                # Nested dataclass support
+                if dataclasses.is_dataclass(arg_type) and not isinstance(
+                    default_value, type
+                ):
+                    add_fields(arg_type, prefix=f"{prefix}.{field.name}")
+                    continue
+
+                # Literal
                 if hasattr(arg_type, "__origin__") and arg_type.__origin__ is Literal:
                     choices = arg_type.__args__
-                    # Use the literal choices as metavar
                     metavar = "{" + ",".join(str(choice) for choice in choices) + "}"
                     self.parser.add_argument(
                         arg_name,
@@ -212,66 +210,61 @@ class DataclassArgParser:
                         help=description,
                         metavar=metavar,
                     )
-                # Handle tuple types
-                elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    tuple,
+                    continue
+
+                # Tuple
+                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
                     tuple,
                     typing.Tuple,
                 ):
                     metavar = "TUPLE"
                     self.parser.add_argument(
                         arg_name,
-                        type=tuple_type_factory(arg_type),
+                        type=self._tuple_type_factory(arg_type),
                         help=description,
                         metavar=metavar,
                     )
-                # Handle list types
-                elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+                    continue
+
+                # List
+                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
                     list,
                     typing.List,
                 ):
                     metavar = "LIST"
                     self.parser.add_argument(
                         arg_name,
-                        type=list_type_factory(arg_type),
+                        type=self._list_type_factory(arg_type),
                         help=description,
                         metavar=metavar,
                     )
-                else:
-                    # Create type-based metavar
-                    if arg_type is int:
-                        metavar = "INT"
-                    elif arg_type is float:
-                        metavar = "FLOAT"
-                    elif arg_type is str:
-                        metavar = "STRING"
-                    elif arg_type is bool:
-                        metavar = "BOOL"
-                    else:
-                        # For other types, use the type name in uppercase
-                        metavar = arg_type.__name__.upper()
+                    continue
 
-                    self.parser.add_argument(
-                        arg_name,
-                        type=arg_type,
-                        help=description,
-                        metavar=metavar,
-                    )
+                # Basic types
+                if arg_type is int:
+                    metavar = "INT"
+                elif arg_type is float:
+                    metavar = "FLOAT"
+                elif arg_type is str:
+                    metavar = "STRING"
+                elif arg_type is bool:
+                    metavar = "BOOL"
+                else:
+                    metavar = arg_type.__name__.upper()
+
+                self.parser.add_argument(
+                    arg_name,
+                    type=arg_type,
+                    help=description,
+                    metavar=metavar,
+                )
+
+        for cls in self.dataclass_types:
+            add_fields(cls)
 
     def parse(self, args=None) -> Dict[str, Any]:
         """
-        Parse command-line arguments and return dataclass instances.
-
-        Args:
-            args: Optional list of arguments to parse. If None, uses sys.argv.
-
-        Returns:
-            Dict mapping dataclass names to their instantiated objects with
-            parsed values.
-
-        Raises:
-            SystemExit: If required fields (those without default values) are not
-            provided either as command-line arguments or in the config file.
+        Parse command-line arguments and return dataclass instances, including nested dataclasses.
         """
         parsed_args = vars(self.parser.parse_args(args))
 
@@ -280,38 +273,77 @@ class DataclassArgParser:
         if parsed_args.get("config"):
             config_data = self._load_config_file(parsed_args["config"])
 
-        result = {}
-        for cls in self.dataclass_types:
+        def build_instance(cls, prefix=None, config_section=None):
+            prefix = prefix or cls.__name__
+            config_section = config_section or config_data.get(cls.__name__, {})
             values = {}
-
-            # First, use default values from dataclass
-            for field in dataclasses.fields(cls):
-                if field.default is not dataclasses.MISSING:
-                    values[field.name] = field.default
-                elif field.default_factory is not dataclasses.MISSING:
-                    values[field.name] = field.default_factory()
-
-            # Then, override with config file values if present
-            cls_config = config_data.get(cls.__name__, {})
-            for field_name, field_value in cls_config.items():
-                if any(f.name == field_name for f in dataclasses.fields(cls)):
-                    values[field_name] = field_value
-
-            # Finally, override with command-line arguments (highest priority)
-            for field in dataclasses.fields(cls):
-                key = f"{cls.__name__}.{field.name}"
-                if key in parsed_args and parsed_args[key] is not None:
-                    values[field.name] = parsed_args[key]
-
-            # Validate that all required fields (without defaults) have values
             missing_fields = []
             for field in dataclasses.fields(cls):
-                if (
-                    field.default is dataclasses.MISSING
-                    and field.default_factory is dataclasses.MISSING
-                    and field.name not in values
-                ):
-                    missing_fields.append(f"--{cls.__name__}.{field.name}")
+                field_name = field.name
+                arg_key = f"{prefix}.{field_name}"
+                arg_type = field.type if field.type is not dataclasses.MISSING else str
+
+                # 1. Default
+                if field.default is not dataclasses.MISSING:
+                    value = field.default
+                elif field.default_factory is not dataclasses.MISSING:
+                    value = field.default_factory()
+                else:
+                    value = dataclasses.MISSING
+
+                # 2. Config file
+                if field_name in config_section:
+                    value = config_section[field_name]
+
+                # 3. Command-line
+                if arg_key in parsed_args and parsed_args[arg_key] is not None:
+                    value = parsed_args[arg_key]
+
+                # Recursively build nested dataclasses
+                if dataclasses.is_dataclass(arg_type):
+                    # Config: get nested dict if present
+                    nested_config = (
+                        config_section.get(field_name, {})
+                        if isinstance(config_section, dict)
+                        else {}
+                    )
+
+                    # Recursively build, merging CLI and config
+                    def merge_nested(cls_nested, prefix_nested, config_nested):
+                        vals = {}
+                        for f in dataclasses.fields(cls_nested):
+                            k_cli = f"{prefix_nested}.{f.name}"
+                            # CLI
+                            if k_cli in parsed_args and parsed_args[k_cli] is not None:
+                                vals[f.name] = parsed_args[k_cli]
+                            # Nested CLI (for deeper nesting)
+                            elif any(
+                                key.startswith(f"{k_cli}.") for key in parsed_args
+                            ):
+                                vals[f.name] = merge_nested(
+                                    f.type, k_cli, config_nested.get(f.name, {})
+                                )
+                            # Config
+                            elif (
+                                isinstance(config_nested, dict)
+                                and f.name in config_nested
+                            ):
+                                vals[f.name] = config_nested[f.name]
+                            # Default
+                            elif f.default is not dataclasses.MISSING:
+                                vals[f.name] = f.default
+                            elif f.default_factory is not dataclasses.MISSING:
+                                vals[f.name] = f.default_factory()
+                            else:
+                                missing_fields.append(f"--{k_cli}")
+                        return cls_nested(**vals)
+
+                    value = merge_nested(arg_type, arg_key, nested_config)
+
+                if value is dataclasses.MISSING:
+                    missing_fields.append(f"--{arg_key}")
+                else:
+                    values[field_name] = value
 
             if missing_fields:
                 error_msg = (
@@ -319,6 +351,9 @@ class DataclassArgParser:
                     f"These must be provided either as command-line arguments or in the config file."
                 )
                 self.parser.error(error_msg)
+            return cls(**values)
 
-            result[cls.__name__] = cls(**values)
+        result = {}
+        for cls in self.dataclass_types:
+            result[cls.__name__] = build_instance(cls)
         return result
