@@ -1,0 +1,19 @@
+{
+    "folders": [
+        {
+            "path": ".."
+        }
+    ],
+    "settings": {
+        "python.defaultInterpreterPath": ".pixi/envs/default/bin/python",
+        "python.analysis.exclude": [
+            "**/.pixi/**"
+        ],
+        "ruff.interpreter": [
+            "${workspaceFolder}/.pixi/envs/default/bin/python"
+        ],
+        "explorer.autoRevealExclude": {
+            ".pixi": true
+        },
+    }
+}

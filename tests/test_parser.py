@@ -63,6 +63,18 @@ class RequiredFieldsConfig:
     )
 
 
+@dataclass
+class RequiredTupleConfig:
+    """Configuration with required tuple fields for testing validation."""
+
+    required_tuple: tuple[int, int, int] = field(
+        metadata={"help": "A required tuple field"}
+    )
+    optional_field: str = field(
+        default="optional_default", metadata={"help": "An optional field with default"}
+    )
+
+
 class TestDataclassArgParser:
     """Test suite for DataclassArgParser class."""
 
@@ -422,6 +434,29 @@ class TestDataclassArgParser:
             assert config.optional_field == "optional_default"
         finally:
             os.unlink(config_path)
+
+    def test_required_tuple_field_success(self):
+        """Test that parser succeeds when all required fields of a tuple are provided."""
+        parser = DataclassArgParser(RequiredTupleConfig)
+
+        result = parser.parse(
+            [
+                "--RequiredTupleConfig.required_tuple",
+                "(1, 2, 3)",
+            ]
+        )
+
+        config = result["RequiredTupleConfig"]
+        assert isinstance(config, RequiredTupleConfig)
+        assert config.required_tuple == (1, 2, 3)
+        assert config.optional_field == "optional_default"
+
+    def test_required_tuple_field_error(self):
+        """Test that parser raises error when required fields of a tuple are missing."""
+        parser = DataclassArgParser(RequiredTupleConfig)
+
+        with pytest.raises(SystemExit):
+            parser.parse(["--RequiredTupleConfig.required_tuple", "(1, 2)"])
 
 
 if __name__ == "__main__":

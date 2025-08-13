@@ -8,9 +8,11 @@ configuration from YAML or JSON files.
 """
 
 import argparse
+import ast
 import dataclasses
 import json
 import os
+import typing
 from typing import Any, Dict, Literal, Type
 
 try:
@@ -108,6 +110,75 @@ class DataclassArgParser:
 
     def _add_dataclass_arguments(self):
         """Add arguments to the parser based on dataclass fields."""
+
+        def tuple_type_factory(tuple_type):
+            # Returns a function that parses a string into a tuple of the correct type and length
+            def parse_tuple(s):
+                # Accepts formats like "(1, 2, 3)" or "1,2,3"
+                try:
+                    if s.startswith("(") and s.endswith(")"):
+                        s = s[1:-1]
+                    items = [item.strip() for item in s.split(",") if item.strip()]
+                    expected_types = tuple_type.__args__
+                    if len(items) != len(expected_types):
+                        raise argparse.ArgumentTypeError(
+                            f"Expected {len(expected_types)} values, got {len(items)}"
+                        )
+                    result = []
+                    for item, typ in zip(items, expected_types):
+                        # Support int, float, str, etc.
+                        try:
+                            value = (
+                                ast.literal_eval(item)
+                                if typ in (int, float, bool)
+                                else item
+                            )
+                            value = typ(value)
+                        except Exception:
+                            raise argparse.ArgumentTypeError(
+                                f"Could not convert '{item}' to {typ.__name__}"
+                            )
+                        result.append(value)
+                    return tuple(result)
+                except Exception as e:
+                    raise argparse.ArgumentTypeError(f"Invalid tuple value: {s} ({e})")
+
+            return parse_tuple
+
+        def list_type_factory(list_type):
+            # Returns a function that parses a string into a list of the correct type
+            def parse_list(s):
+                # Accepts formats like "[1, 2, 3]" or "1,2,3"
+                try:
+                    if s.startswith("[") and s.endswith("]"):
+                        s = s[1:-1]
+                    items = [item.strip() for item in s.split(",") if item.strip()]
+                    # Get the type of the list elements
+                    elem_type = (
+                        list_type.__args__[0]
+                        if hasattr(list_type, "__args__") and list_type.__args__
+                        else str
+                    )
+                    result = []
+                    for item in items:
+                        try:
+                            value = (
+                                ast.literal_eval(item)
+                                if elem_type in (int, float, bool)
+                                else item
+                            )
+                            value = elem_type(value)
+                        except Exception:
+                            raise argparse.ArgumentTypeError(
+                                f"Could not convert '{item}' to {elem_type.__name__}"
+                            )
+                        result.append(value)
+                    return result
+                except Exception as e:
+                    raise argparse.ArgumentTypeError(f"Invalid list value: {s} ({e})")
+
+            return parse_list
+
         for cls in self.dataclass_types:
             for field in dataclasses.fields(cls):
                 arg_name = f"--{cls.__name__}.{field.name}"
@@ -138,6 +209,31 @@ class DataclassArgParser:
                         arg_name,
                         type=str,
                         choices=choices,
+                        help=description,
+                        metavar=metavar,
+                    )
+                # Handle tuple types
+                elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+                    tuple,
+                    tuple,
+                    typing.Tuple,
+                ):
+                    metavar = "TUPLE"
+                    self.parser.add_argument(
+                        arg_name,
+                        type=tuple_type_factory(arg_type),
+                        help=description,
+                        metavar=metavar,
+                    )
+                # Handle list types
+                elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+                    list,
+                    typing.List,
+                ):
+                    metavar = "LIST"
+                    self.parser.add_argument(
+                        arg_name,
+                        type=list_type_factory(arg_type),
                         help=description,
                         metavar=metavar,
                     )
