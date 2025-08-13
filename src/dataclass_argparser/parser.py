@@ -13,7 +13,7 @@ import dataclasses
 import json
 import os
 import typing
-from typing import Any, Literal, Type
+from typing import Any, Literal, Type, Union, Optional
 
 try:
     import yaml
@@ -287,12 +287,12 @@ class DataclassArgParser:
         for cls in self.dataclass_types:
             add_fields(cls)
 
-    def parse(self, args: list[str] | None = None) -> dict[str, Any]:
+    def parse(self, args: Optional[list[str]] = None) -> dict[str, Any]:
         """
         Parse command-line arguments and return dataclass instances, including nested dataclasses.
 
         Args:
-            args (list[str] | None): Optional list of arguments to parse. If None, uses sys.argv.
+            args (Optional[list[str]]): Optional list of arguments to parse. If None, uses sys.argv.
 
         Returns:
             dict[str, Any]: Dict mapping dataclass names to their instantiated objects with parsed values.

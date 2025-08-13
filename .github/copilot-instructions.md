@@ -55,3 +55,10 @@ config: MyConfig = result["MyConfig"]
 
 ---
 If you are unsure about a pattern or workflow, check the README and the test files for concrete examples.
+
+## Compatibility
+- **Python Versions**: This project is compatible with Python 3.9 and above.
+    - For typehints use `from typing import Any, Literal, Type, Union, Optional`
+- **Dataclass Support**: Requires Python 3.9+ for dataclass support.
+- **YAML Support**: Optional, requires `PyYAML` for YAML config files.
+
