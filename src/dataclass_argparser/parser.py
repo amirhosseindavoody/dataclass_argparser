@@ -47,7 +47,9 @@ class DataclassArgParser:
         # python script.py --config config.yaml
     """
 
-    def __init__(self, *dataclass_types: Type[Any]) -> None:
+    def __init__(
+        self, *dataclass_types: Type[Any], flags: Optional[list] = None
+    ) -> None:
         """
         Initialize the DataclassArgParser with one or more dataclass types.
 
@@ -57,7 +59,51 @@ class DataclassArgParser:
         self.dataclass_types: tuple[Type[Any], ...] = dataclass_types
         self.parser: argparse.ArgumentParser = argparse.ArgumentParser()
         self._add_config_argument()
+
+        # Add any individual flags provided by the caller before dataclass args
+        # Each item in `flags` may be one of:
+        # - (name, kwargs) where name is a str or a tuple/list of option strings and kwargs is a dict
+        # - {'names': name_or_list, 'kwargs': {...}}
+        if flags:
+            for item in flags:
+                if isinstance(item, dict) and "names" in item:
+                    names = item["names"]
+                    kwargs = item.get("kwargs", {})
+                elif isinstance(item, (list, tuple)) and len(item) == 2:
+                    names, kwargs = item
+                else:
+                    raise ValueError(
+                        "Each flag must be (names, kwargs) tuple or {'names': ..., 'kwargs': ...} dict"
+                    )
+
+                # Normalize single name to tuple for add_argument
+                if isinstance(names, str):
+                    names = (names,)
+
+                self.add_flag(*names, **(kwargs or {}))
+
         self._add_dataclass_arguments()
+
+    def add_flag(self, *names: str, **kwargs: Any) -> None:
+        """
+        Add an individual command-line flag/argument to the parser.
+
+        Example:
+            parser.add_flag('--verbose', '-v', action='store_true', help='Enable verbose')
+
+        Args:
+            *names: One or more option strings (e.g. '--foo' or '-f', '--foo').
+            **kwargs: Keyword arguments passed through to argparse.ArgumentParser.add_argument.
+        """
+        # Check for name conflicts with existing option strings
+        for n in names:
+            if n in self.parser._option_string_actions:
+                raise ValueError(f"Flag name conflict: {n}")
+
+        # Simply forward to the underlying argparse parser. This provides a
+        # convenient way to mix manually-declared flags with auto-generated
+        # dataclass arguments.
+        self.parser.add_argument(*names, **kwargs)
 
     def _add_config_argument(self) -> None:
         """
@@ -418,4 +464,24 @@ class DataclassArgParser:
         result = {}
         for cls in self.dataclass_types:
             result[cls.__name__] = build_instance(cls)
+        # Collect any custom flags (those not belonging to dataclass fields nor the config key)
+        dataclass_dests = set(
+            action.dest
+            for action in self.parser._actions
+            if hasattr(action, "dest") and "." in action.dest
+        )
+        custom_flags = {
+            k: v
+            for k, v in parsed_args.items()
+            if k != "config" and k not in dataclass_dests
+        }
+
+        # Expose custom flags as explicit top-level keys in the returned dict.
+        # Avoid overwriting dataclass entries; if a name would collide with an
+        # existing key in result, raise a ValueError.
+        for k, v in custom_flags.items():
+            if k in result:
+                raise ValueError(f"Custom flag name collides with result key: {k}")
+            result[k] = v
+
         return result

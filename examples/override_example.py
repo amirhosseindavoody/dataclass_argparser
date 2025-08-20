@@ -9,63 +9,41 @@ by command-line arguments, demonstrating the priority system:
 3. Dataclass defaults (lowest priority)
 """
 
+import sys
 from dataclasses import dataclass, field
+
 from dataclass_argparser import DataclassArgParser
 
 
 @dataclass
-class SimulationConfig:
-    hspice_path: str = field(
-        default="/default/hspice", metadata={"help": "Path to HSPICE"}
-    )
-    temperature: float = field(
-        default=27.0, metadata={"help": "Temperature in Celsius"}
-    )
-    num_simulations: int = field(
-        default=100, metadata={"help": "Number of simulations"}
-    )
+class ConfigurationA:
+    path: str = field(default="/default/path", metadata={"help": "A filesystem path"})
+    float_field: float = field(default=0.0, metadata={"help": "A float field"})
+    int_field: int = field(default=0, metadata={"help": "An integer field"})
 
 
 @dataclass
-class NetbatchConfig:
-    nb_max_jobs: int = field(default=10, metadata={"help": "Max number of jobs"})
-    nbpool: str = field(default="default_pool", metadata={"help": "Netbatch pool"})
+class ConfigurationB:
+    int_field_2: int = field(default=0, metadata={"help": "Another integer field"})
+    string_field: str = field(default="", metadata={"help": "A string field"})
 
 
 if __name__ == "__main__":
-    parser = DataclassArgParser(SimulationConfig, NetbatchConfig)
+    parser = DataclassArgParser(ConfigurationA, ConfigurationB)
 
-    # Test with config file and command-line override
-    print("Testing override functionality...")
-    print("=" * 50)
+    result = parser.parse()
 
-    result = parser.parse(
-        [
-            "--config",
-            "dataclass_argparser/examples/override_config.json",
-            "--SimulationConfig.temperature",
-            "25.0",
-        ]
-    )
-
-    sim_config = result["SimulationConfig"]
-    nb_config = result["NetbatchConfig"]
+    a = result.get("ConfigurationA")
+    b = result.get("ConfigurationB")
 
     print("Results:")
     print("-" * 20)
-    print(f"Temperature: {sim_config.temperature}°C")  # Should be 25.0 (overridden)
-    print(
-        f"Num simulations: {sim_config.num_simulations}"
-    )  # Should be 1000 (from config)
-    print(f"Max jobs: {nb_config.nb_max_jobs}")  # Should be 1000 (from config)
-    print(f"Pool: {nb_config.nbpool}")  # Should be pdx_dts (from config)
+    print(f"ConfigurationA.path: {a.path}")
+    print(f"ConfigurationA.float_field: {a.float_field}")
+    print(f"ConfigurationA.int_field: {a.int_field}")
 
-    print("\nPriority demonstration:")
-    print("1. Default temperature was: 27.0")
-    print("2. Config file set it to: 85.0")
-    print(f"3. Command line overrode it to: {sim_config.temperature}")
+    print(f"ConfigurationB.int_field_2: {b.int_field_2}")
+    print(f"ConfigurationB.string_field: {b.string_field}")
 
-    print("\nThis demonstrates that command-line arguments have the highest priority!")
-    print(
-        "Try running with different --SimulationConfig.temperature values to see the override in action."
-    )
+    print("\nPriority demonstration (config file vs defaults vs CLI):")
+    print("See printed values above for how precedence is applied.")

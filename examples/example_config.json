@@ -7,7 +7,7 @@
         "verbose": true
     },
     "ProcessConfig": {
-        "process_type": "accurate",
+        "process_type": "typeA",
         "max_workers": 8,
         "timeout": 600.0
     }
