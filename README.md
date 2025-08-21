@@ -116,11 +116,16 @@ Main class for creating argument parsers from dataclasses.
 #### Constructor
 
 ```python
-DataclassArgParser(*dataclass_types: Type[Any])
+DataclassArgParser(*dataclass_types: Type[Any], flags: Optional[list] = None, config_flag: Union[str, list[str], tuple[str, ...]] = "--config")
 ```
 
 **Parameters:**
 - `*dataclass_types`: One or more dataclass types to generate arguments from
+- `flags` (optional): A list of custom flags to add to the underlying parser. Each item may be either:
+  - a tuple/list of `(short_flag, long_flag, kwargs_dict)` where `short_flag` and `long_flag` are option strings (e.g. `'-v'`, `'--verbose'`), and `kwargs_dict` is a dict of keyword args forwarded to `argparse.ArgumentParser.add_argument`; or
+  - a dict of the form `{'names': name_or_list, 'kwargs': {...}}`.
+  This lets you mix manually-declared flags (for example `--verbose`, `--dry-run`) with auto-generated dataclass arguments.
+- `config_flag` (optional): Customize the command-line option(s) used to load a config file. Accepts a single string (e.g. `'--cfg'`) or a list/tuple of option strings (e.g. `['-c', '--config']`). The default is `"--config"`.
 
 #### Methods
 
@@ -136,6 +141,34 @@ Parse command-line arguments and return dataclass instances.
 
 **Raises:**
 - `SystemExit`: If required fields are not provided either as command-line arguments or in the config file.
+
+## Custom flags and configurable config-file option
+
+- Custom flags added via the `flags` constructor argument or via `add_flag()` are passed through to the underlying `argparse.ArgumentParser`. After `parse()` returns, any flags that are not dataclass fields (and are not the configured config-file option) appear as top-level keys in the returned dict using their argparse destination names. The parser protects dataclass entries from being overwritten; if a custom flag would collide with a dataclass key a `ValueError` is raised.
+
+- The config-file option name can be customized with the `config_flag` constructor parameter. Provide a single option string (e.g. `'--cfg'`) or a sequence like `('-c', '--config')`. The parser records the argparse destination name for the config option so configuration loading works regardless of the option strings you choose.
+
+Example mixing custom flags and a short config flag:
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class Config:
+  name: str = field(default="test", metadata={"help": "The name to use"})
+
+parser = DataclassArgParser(
+  Config,
+  flags=[(
+    ('-v', '--verbose'),
+    {'action': 'store_true', 'help': 'Enable verbose output'}
+  )],
+  config_flag=('-c', '--config'),
+)
+res = parser.parse()
+# res will contain: {'Config': Config(...), 'verbose': True} if --verbose passed
+```
 
 ## Field Metadata
 
