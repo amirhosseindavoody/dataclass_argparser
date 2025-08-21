@@ -331,6 +331,24 @@ class TestDataclassArgParser:
         assert "--config FILE" in help_output
         assert "Path to configuration file (YAML or JSON format)" in help_output
 
+    def test_custom_config_flag(self):
+        """Test that a custom config flag name is accepted and used."""
+        config_data = {"SampleConfig": {"string_field": "from_json"}}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            # Use custom flag name --cfg instead of --config
+            parser = DataclassArgParser(SampleConfig, config_flag="--cfg")
+            result = parser.parse(["--cfg", config_path])
+
+            config = result["SampleConfig"]
+            assert config.string_field == "from_json"
+        finally:
+            os.unlink(config_path)
+
     def test_required_fields_missing_cmdline_error(self):
         """Test that parser raises error when required fields are missing from command line."""
         parser = DataclassArgParser(RequiredFieldsConfig)

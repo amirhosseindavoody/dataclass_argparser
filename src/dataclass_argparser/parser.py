@@ -48,7 +48,10 @@ class DataclassArgParser:
     """
 
     def __init__(
-        self, *dataclass_types: Type[Any], flags: Optional[list] = None
+        self,
+        *dataclass_types: Type[Any],
+        flags: Optional[list] = None,
+        config_flag: Union[str, list[str], tuple[str, ...]] = "--config",
     ) -> None:
         """
         Initialize the DataclassArgParser with one or more dataclass types.
@@ -58,7 +61,12 @@ class DataclassArgParser:
         """
         self.dataclass_types: tuple[Type[Any], ...] = dataclass_types
         self.parser: argparse.ArgumentParser = argparse.ArgumentParser()
-        self._add_config_argument()
+        # store the requested option string(s) for the config file flag so it
+        # can be customized by the caller (default: "--config").
+        self._requested_config_flag = config_flag
+        # actual dest name for the config argument (populated when added)
+        self._config_dest: str = "config"
+        self._add_config_argument(self._requested_config_flag)
 
         # Add any individual flags provided by the caller before dataclass args
         # Each item in `flags` may be one of:
@@ -105,16 +113,34 @@ class DataclassArgParser:
         # dataclass arguments.
         self.parser.add_argument(*names, **kwargs)
 
-    def _add_config_argument(self) -> None:
+    def _add_config_argument(
+        self, config_flag: Union[str, list[str], tuple[str, ...]] = "--config"
+    ) -> None:
         """
-        Add the --config argument for loading configuration from YAML or JSON files.
+        Add the config argument for loading configuration from YAML or JSON files.
+
+        The caller may provide either a single option string (e.g. "--cfg") or a
+        list/tuple of option strings (e.g. ["-c", "--cfg"]). The destination
+        name created by argparse is recorded in `self._config_dest` so the rest
+        of the code can look up the parsed value regardless of the option name.
         """
+        # Normalize to sequence of option strings
+        if isinstance(config_flag, str):
+            names = (config_flag,)
+        else:
+            names = tuple(config_flag)
+
         self.parser.add_argument(
-            "--config",
+            *names,
             type=str,
             metavar="FILE",
             help="Path to configuration file (YAML or JSON format)",
         )
+
+        # Record the dest name created by argparse for the config argument.
+        # The most-recently-added action corresponds to this argument.
+        if self.parser._actions:
+            self._config_dest = self.parser._actions[-1].dest
 
     def _load_config_file(self, config_path: str) -> dict[str, Any]:
         """
@@ -348,10 +374,10 @@ class DataclassArgParser:
         """
         parsed_args = vars(self.parser.parse_args(args))
 
-        # Check if config file is provided
+        # Check if config file is provided (use recorded dest name to support custom flag)
         config_data = {}
-        if parsed_args.get("config"):
-            config_data = self._load_config_file(parsed_args["config"])
+        if parsed_args.get(self._config_dest):
+            config_data = self._load_config_file(parsed_args[self._config_dest])
 
         def build_instance(cls, prefix=None, config_section=None):
             prefix = prefix or cls.__name__
@@ -473,7 +499,7 @@ class DataclassArgParser:
         custom_flags = {
             k: v
             for k, v in parsed_args.items()
-            if k != "config" and k not in dataclass_dests
+            if k != self._config_dest and k not in dataclass_dests
         }
 
         # Expose custom flags as explicit top-level keys in the returned dict.
