@@ -5,6 +5,28 @@ from dataclass_argparser.parser import DataclassArgParser
 
 
 @dataclasses.dataclass
+class InnerWithNoDefaults:
+    a: int
+    b: int
+
+
+@dataclasses.dataclass
+class OuterWithFactory:
+    inner: InnerWithNoDefaults = dataclasses.field(
+        default_factory=lambda: InnerWithNoDefaults(a=1, b=2)
+    )
+
+
+def test_outer_with_default_factory_and_inner_no_defaults():
+    parser = DataclassArgParser(OuterWithFactory)
+    result = parser.parse([])
+    cfg = result["OuterWithFactory"]
+    assert isinstance(cfg.inner, InnerWithNoDefaults)
+    assert cfg.inner.a == 1
+    assert cfg.inner.b == 2
+
+
+@dataclasses.dataclass
 class Inner:
     x: int = dataclasses.field(default=1, metadata={"help": "Inner x"})
     y: str = dataclasses.field(default="foo", metadata={"help": "Inner y"})

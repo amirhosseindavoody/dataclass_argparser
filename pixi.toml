@@ -31,9 +31,9 @@ lint = "echo 'Add linting tools like ruff or flake8 if needed'"
 
 [tasks.test-all]
 cmd = """
-pytest tests/ &&
-python examples/basic_example.py --name test --temperature 25.0 &&
-python examples/override_example.py --config examples/example_config.json
+pytest tests/ && \
+python examples/basic_example.py --name test --temperature 25.0 && \
+python examples/override_example.py --config examples/example_config.json && \
 python examples/custom_flags_example.py --config examples/example_config.json
 """
 

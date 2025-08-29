@@ -472,7 +472,30 @@ class DataclassArgParser:
                                 missing_fields.append(f"--{k_cli}")
                         return cls_nested(**vals)
 
-                    value = merge_nested(arg_type, arg_key, nested_config)
+                    # If any CLI/config overrides for nested fields, use merge_nested
+                    # Recursively check for any CLI/config keys that start with the nested prefix
+                    nested_prefix = f"{arg_key}."
+                    has_override = any(
+                        key.startswith(nested_prefix) and parsed_args[key] is not None
+                        for key in parsed_args
+                    )
+
+                    # Also check for any config overrides in nested_config
+                    def config_has_override(cfg):
+                        if isinstance(cfg, dict):
+                            if cfg:
+                                return True
+                            for v in cfg.values():
+                                if config_has_override(v):
+                                    return True
+                        return False
+
+                    if not has_override:
+                        has_override = config_has_override(nested_config)
+                    if has_override:
+                        value = merge_nested(arg_type, arg_key, nested_config)
+                    # Otherwise, use the default instance (from default_factory or default)
+                    # value is already set
 
                 if value is dataclasses.MISSING:
                     missing_fields.append(f"--{arg_key}")
