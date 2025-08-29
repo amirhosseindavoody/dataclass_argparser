@@ -118,6 +118,9 @@ class DataclassArgParser:
     ) -> None:
         """
         Add the config argument for loading configuration from YAML or JSON files.
+        """
+        """
+        Add the config argument for loading configuration from YAML or JSON files.
 
         The caller may provide either a single option string (e.g. "--cfg") or a
         list/tuple of option strings (e.g. ["-c", "--cfg"]). The destination
@@ -143,6 +146,9 @@ class DataclassArgParser:
             self._config_dest = self.parser._actions[-1].dest
 
     def _load_config_file(self, config_path: str) -> dict[str, Any]:
+        """
+        Load configuration from a YAML or JSON file.
+        """
         """
         Load configuration from a YAML or JSON file.
 
@@ -182,7 +188,10 @@ class DataclassArgParser:
                     "Supported formats are: .yaml, .yml, .json"
                 )
 
-    def _tuple_type_factory(self, tuple_type: Any) -> Any:
+    def _tuple_type_factory(self, tuple_type: Any) -> typing.Callable[[str], tuple]:
+        """
+        Return a function that parses a string into a tuple of the correct type and length.
+        """
         """
         Return a function that parses a string into a tuple of the correct type and length.
 
@@ -223,7 +232,10 @@ class DataclassArgParser:
 
         return parse_tuple
 
-    def _list_type_factory(self, list_type: Any) -> Any:
+    def _list_type_factory(self, list_type: Any) -> typing.Callable[[str], list]:
+        """
+        Return a function that parses a string into a list of the correct type.
+        """
         """
         Return a function that parses a string into a list of the correct type.
 
@@ -265,6 +277,10 @@ class DataclassArgParser:
         return parse_list
 
     def _add_dataclass_arguments(self) -> None:
+        """
+        Add arguments to the parser based on dataclass fields, including nested dataclasses.
+        Handles Literal, tuple, list, and nested dataclass types.
+        """
         """
         Add arguments to the parser based on dataclass fields, including nested dataclasses.
         Handles Literal, tuple, list, and nested dataclass types.
@@ -372,6 +388,7 @@ class DataclassArgParser:
         Raises:
             SystemExit: If required fields (those without defaults) are not provided either as command-line arguments or in the config file.
         """
+
         parsed_args = vars(self.parser.parse_args(args))
 
         # Check if config file is provided (use recorded dest name to support custom flag)
@@ -379,158 +396,192 @@ class DataclassArgParser:
         if parsed_args.get(self._config_dest):
             config_data = self._load_config_file(parsed_args[self._config_dest])
 
-        def build_instance(cls, prefix=None, config_section=None):
-            prefix = prefix or cls.__name__
-            config_section = config_section or config_data.get(cls.__name__, {})
-            values = {}
-            missing_fields = []
-            for field in dataclasses.fields(cls):
-                field_name = field.name
-                arg_key = f"{prefix}.{field_name}"
-                arg_type = field.type if field.type is not dataclasses.MISSING else str
-
-                # 1. Default
-                if field.default is not dataclasses.MISSING:
-                    value = field.default
-                elif field.default_factory is not dataclasses.MISSING:
-                    value = field.default_factory()
-                else:
-                    value = dataclasses.MISSING
-
-                # 2. Config file
-                if field_name in config_section:
-                    value = config_section[field_name]
-
-                # 3. Command-line
-                if arg_key in parsed_args and parsed_args[arg_key] is not None:
-                    value = parsed_args[arg_key]
-
-                # Handle tuple of dataclasses
-                if (
-                    hasattr(arg_type, "__origin__")
-                    and arg_type.__origin__ in (tuple, typing.Tuple)
-                    and all(
-                        dataclasses.is_dataclass(t)
-                        for t in getattr(arg_type, "__args__", [])
-                    )
-                ):
-                    elem_types = arg_type.__args__
-                    if isinstance(value, list) and len(value) == len(elem_types):
-                        value = tuple(
-                            t(**v) if isinstance(v, dict) else v
-                            for t, v in zip(elem_types, value)
-                        )
-
-                # Handle list of dataclasses
-                elif (
-                    hasattr(arg_type, "__origin__")
-                    and arg_type.__origin__ in (list, typing.List)
-                    and len(getattr(arg_type, "__args__", [])) == 1
-                    and dataclasses.is_dataclass(arg_type.__args__[0])
-                ):
-                    elem_type = arg_type.__args__[0]
-                    if isinstance(value, list):
-                        value = [
-                            elem_type(**v) if isinstance(v, dict) else v for v in value
-                        ]
-
-                # Handle nested dataclass
-                elif dataclasses.is_dataclass(arg_type):
-                    # Config: get nested dict if present
-                    nested_config = (
-                        config_section.get(field_name, {})
-                        if isinstance(config_section, dict)
-                        else {}
-                    )
-
-                    def merge_nested(cls_nested, prefix_nested, config_nested):
-                        vals = {}
-                        for f in dataclasses.fields(cls_nested):
-                            k_cli = f"{prefix_nested}.{f.name}"
-                            # CLI
-                            if k_cli in parsed_args and parsed_args[k_cli] is not None:
-                                vals[f.name] = parsed_args[k_cli]
-                            # Nested CLI (for deeper nesting)
-                            elif any(
-                                key.startswith(f"{k_cli}.") for key in parsed_args
-                            ):
-                                vals[f.name] = merge_nested(
-                                    f.type, k_cli, config_nested.get(f.name, {})
-                                )
-                            # Config
-                            elif (
-                                isinstance(config_nested, dict)
-                                and f.name in config_nested
-                            ):
-                                vals[f.name] = config_nested[f.name]
-                            # Default
-                            elif f.default is not dataclasses.MISSING:
-                                vals[f.name] = f.default
-                            elif f.default_factory is not dataclasses.MISSING:
-                                vals[f.name] = f.default_factory()
-                            else:
-                                missing_fields.append(f"--{k_cli}")
-                        return cls_nested(**vals)
-
-                    # If any CLI/config overrides for nested fields, use merge_nested
-                    # Recursively check for any CLI/config keys that start with the nested prefix
-                    nested_prefix = f"{arg_key}."
-                    has_override = any(
-                        key.startswith(nested_prefix) and parsed_args[key] is not None
-                        for key in parsed_args
-                    )
-
-                    # Also check for any config overrides in nested_config
-                    def config_has_override(cfg):
-                        if isinstance(cfg, dict):
-                            if cfg:
-                                return True
-                            for v in cfg.values():
-                                if config_has_override(v):
-                                    return True
-                        return False
-
-                    if not has_override:
-                        has_override = config_has_override(nested_config)
-                    if has_override:
-                        value = merge_nested(arg_type, arg_key, nested_config)
-                    # Otherwise, use the default instance (from default_factory or default)
-                    # value is already set
-
-                if value is dataclasses.MISSING:
-                    missing_fields.append(f"--{arg_key}")
-                else:
-                    values[field_name] = value
-
-            if missing_fields:
-                error_msg = (
-                    f"Missing required arguments for {cls.__name__}: {', '.join(missing_fields)}. "
-                    f"These must be provided either as command-line arguments or in the config file."
-                )
-                self.parser.error(error_msg)
-            return cls(**values)
-
         result = {}
+        # Add dataclass instances
+        dataclass_field_names = set()
         for cls in self.dataclass_types:
-            result[cls.__name__] = build_instance(cls)
-        # Collect any custom flags (those not belonging to dataclass fields nor the config key)
-        dataclass_dests = set(
-            action.dest
-            for action in self.parser._actions
-            if hasattr(action, "dest") and "." in action.dest
-        )
-        custom_flags = {
-            k: v
-            for k, v in parsed_args.items()
-            if k != self._config_dest and k not in dataclass_dests
-        }
+            instance = self._build_instance(cls, parsed_args, config_data)
+            result[cls.__name__] = instance
+            # Collect all dataclass argument keys
+            for field in dataclasses.fields(cls):
+                dataclass_field_names.add(f"{cls.__name__}.{field.name}")
 
-        # Expose custom flags as explicit top-level keys in the returned dict.
-        # Avoid overwriting dataclass entries; if a name would collide with an
-        # existing key in result, raise a ValueError.
-        for k, v in custom_flags.items():
-            if k in result:
-                raise ValueError(f"Custom flag name collides with result key: {k}")
-            result[k] = v
-
+        # Add custom flags (not associated with dataclass fields)
+        for key, value in parsed_args.items():
+            if key not in dataclass_field_names and key != self._config_dest:
+                result[key] = value
         return result
+
+    def _build_instance(
+        self,
+        cls: Type[Any],
+        parsed_args: dict[str, Any],
+        config_data: dict[str, Any],
+        prefix: Optional[str] = None,
+        config_section: Optional[dict[str, Any]] = None,
+    ) -> Any:
+        """
+        Build an instance of the dataclass `cls` using parsed arguments and config data.
+        Handles required fields and nested dataclasses.
+        """
+        prefix = prefix or cls.__name__
+        config_section = config_section or config_data.get(cls.__name__, {})
+        values = {}
+        missing_fields = []
+        for field in dataclasses.fields(cls):
+            field_name = field.name
+            arg_key = f"{prefix}.{field_name}"
+            arg_type = field.type if field.type is not dataclasses.MISSING else str
+
+            value = self._resolve_field_value(
+                field, arg_key, arg_type, config_section, parsed_args, config_data
+            )
+
+            # Type-specific handling
+            value = self._handle_field_type(value, arg_type)
+
+            if value is dataclasses.MISSING:
+                missing_fields.append(f"--{arg_key}")
+            else:
+                values[field_name] = value
+
+        if missing_fields:
+            error_msg = (
+                f"Missing required arguments for {cls.__name__}: {', '.join(missing_fields)}. "
+                f"These must be provided either as command-line arguments or in the config file."
+            )
+            self.parser.error(error_msg)
+        return cls(**values)
+
+    def _resolve_field_value(
+        self,
+        field: dataclasses.Field,
+        arg_key: str,
+        arg_type: Any,
+        config_section: dict[str, Any],
+        parsed_args: dict[str, Any],
+        config_data: dict[str, Any],
+    ) -> Any:
+        """
+        Resolve the value for a dataclass field from defaults, config, CLI, and nested overrides.
+        """
+        # 1. Default
+        if field.default is not dataclasses.MISSING:
+            value = field.default
+        elif field.default_factory is not dataclasses.MISSING:
+            value = field.default_factory()
+        else:
+            value = dataclasses.MISSING
+
+        # 2. Config file
+        if field.name in config_section:
+            value = config_section[field.name]
+
+        # 3. Command-line
+        if arg_key in parsed_args and parsed_args[arg_key] is not None:
+            value = parsed_args[arg_key]
+
+        # 4. Nested dataclass: check for overrides
+        if dataclasses.is_dataclass(arg_type):
+            nested_config = (
+                config_section.get(field.name, {})
+                if isinstance(config_section, dict)
+                else {}
+            )
+            nested_prefix = f"{arg_key}."
+            has_override = any(
+                key.startswith(nested_prefix) and parsed_args[key] is not None
+                for key in parsed_args
+            )
+
+            def config_has_override(cfg):
+                if isinstance(cfg, dict):
+                    if cfg:
+                        return True
+                    for v in cfg.values():
+                        if config_has_override(v):
+                            return True
+                return False
+
+            if not has_override:
+                has_override = config_has_override(nested_config)
+            if has_override:
+                value = self._merge_nested(
+                    arg_type, arg_key, nested_config, parsed_args, config_data
+                )
+        return value
+
+    def _handle_field_type(self, value: Any, arg_type: Any) -> Any:
+        """
+        Handle type-specific conversion for lists and tuples of dataclasses.
+        """
+        # Handle tuple of dataclasses
+        if (
+            hasattr(arg_type, "__origin__")
+            and arg_type.__origin__ in (tuple, typing.Tuple)
+            and all(
+                dataclasses.is_dataclass(t) for t in getattr(arg_type, "__args__", [])
+            )
+        ):
+            elem_types = arg_type.__args__
+            if isinstance(value, list) and len(value) == len(elem_types):
+                value = tuple(
+                    t(**v) if isinstance(v, dict) else v
+                    for t, v in zip(elem_types, value)
+                )
+        # Handle list of dataclasses
+        elif (
+            hasattr(arg_type, "__origin__")
+            and arg_type.__origin__ in (list, typing.List)
+            and len(getattr(arg_type, "__args__", [])) == 1
+            and dataclasses.is_dataclass(arg_type.__args__[0])
+        ):
+            elem_type = arg_type.__args__[0]
+            if isinstance(value, list):
+                value = [elem_type(**v) if isinstance(v, dict) else v for v in value]
+        return value
+
+    def _merge_nested(
+        self,
+        cls_nested: Type[Any],
+        prefix_nested: str,
+        config_nested: dict[str, Any],
+        parsed_args: dict[str, Any],
+        config_data: dict[str, Any],
+    ) -> Any:
+        """
+        Recursively merge nested dataclass values from CLI, config, and defaults.
+        """
+        vals = {}
+        missing_fields = []
+        for f in dataclasses.fields(cls_nested):
+            k_cli = f"{prefix_nested}.{f.name}"
+            # CLI
+            if k_cli in parsed_args and parsed_args[k_cli] is not None:
+                vals[f.name] = parsed_args[k_cli]
+            # Nested CLI (for deeper nesting)
+            elif any(key.startswith(f"{k_cli}.") for key in parsed_args):
+                vals[f.name] = self._merge_nested(
+                    f.type,
+                    k_cli,
+                    config_nested.get(f.name, {}),
+                    parsed_args,
+                    config_data,
+                )
+            # Config
+            elif isinstance(config_nested, dict) and f.name in config_nested:
+                vals[f.name] = config_nested[f.name]
+            # Default
+            elif f.default is not dataclasses.MISSING:
+                vals[f.name] = f.default
+            elif f.default_factory is not dataclasses.MISSING:
+                vals[f.name] = f.default_factory()
+            else:
+                missing_fields.append(f"--{k_cli}")
+        if missing_fields:
+            error_msg = (
+                f"Missing required arguments for {cls_nested.__name__}: {', '.join(missing_fields)}. "
+                f"These must be provided either as command-line arguments or in the config file."
+            )
+            self.parser.error(error_msg)
+        return cls_nested(**vals)
