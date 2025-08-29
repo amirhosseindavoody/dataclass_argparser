@@ -20,10 +20,30 @@ class OuterWithFactory:
 def test_outer_with_default_factory_and_inner_no_defaults():
     parser = DataclassArgParser(OuterWithFactory)
     result = parser.parse([])
-    cfg = result["OuterWithFactory"]
+    cfg: OuterWithFactory = result["OuterWithFactory"]
+    assert isinstance(cfg, OuterWithFactory)
     assert isinstance(cfg.inner, InnerWithNoDefaults)
     assert cfg.inner.a == 1
     assert cfg.inner.b == 2
+
+
+def test_outer_with_default_factory_and_inner_no_defaults_from_config(tmp_path):
+    """Test that a nested dataclass with a default_factory for the outer class and
+    no defaults for the inner class can be correctly loaded from a config file.
+    Verifies that config values override the default_factory and that the inner
+    dataclass fields are set from the config.
+    """
+    config = {"OuterWithFactory": {"inner": {"a": 5, "b": 6}}}
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    parser = DataclassArgParser(OuterWithFactory)
+    result = parser.parse(["--config", str(config_path)])
+    cfg: OuterWithFactory = result["OuterWithFactory"]
+    assert isinstance(cfg, OuterWithFactory)
+    assert isinstance(cfg.inner, InnerWithNoDefaults)
+    assert cfg.inner.a == 5
+    assert cfg.inner.b == 6
 
 
 @dataclasses.dataclass
