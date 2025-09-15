@@ -39,12 +39,19 @@ python -m build
 
 ```python
 from dataclasses import dataclass, field
+from typing import Literal
 from dataclass_argparser import DataclassArgParser
 
 @dataclass
 class Config:
     name: str = field(default="test", metadata={"help": "The name to use"})
     count: int = field(default=5, metadata={"help": "Number of items"})
+    rate: float = field(default=0.5, metadata={"help": "Processing rate"})
+    debug: bool = field(default=False, metadata={"help": "Enable debug mode"})
+    environment: Literal["dev", "staging", "prod"] = field(default="dev", metadata={"help": "Environment"})
+    tags: list[str] = field(default_factory=lambda: ["default"], metadata={"help": "List of tags"})
+    coordinates: tuple[int, int] = field(default=(0, 0), metadata={"help": "X,Y coordinates"})
+    settings: dict[str, str] = field(default_factory=lambda: {"key": "value"}, metadata={"help": "Settings dict"})
     required_field: str = field(metadata={"help": "A required field"})
 
 parser = DataclassArgParser(Config)
@@ -53,6 +60,12 @@ config = result['Config']
 
 print(f"Name: {config.name}")
 print(f"Count: {config.count}")
+print(f"Rate: {config.rate}")
+print(f"Debug: {config.debug}")
+print(f"Environment: {config.environment}")
+print(f"Tags: {config.tags}")
+print(f"Coordinates: {config.coordinates}")
+print(f"Settings: {config.settings}")
 print(f"Required: {config.required_field}")
 ```
 
@@ -61,7 +74,17 @@ print(f"Required: {config.required_field}")
 ### Basic Usage
 
 ```bash
-python script.py --Config.name "myname" --Config.count 10 --Config.required_field "value"
+# All supported types
+python script.py \
+  --Config.name "myname" \
+  --Config.count 10 \
+  --Config.rate 0.75 \
+  --Config.debug true \
+  --Config.environment "prod" \
+  --Config.tags "api,backend" \
+  --Config.coordinates "100,200" \
+  --Config.settings '{"db": "postgres", "cache": "redis"}' \
+  --Config.required_field "value"
 ```
 
 ### Using Config Files
@@ -72,6 +95,12 @@ Create a config file `config.json`:
   "Config": {
     "name": "from_config",
     "count": 100,
+    "rate": 0.8,
+    "debug": true,
+    "environment": "staging",
+    "tags": ["config", "auto"],
+    "coordinates": [50, 75],
+    "settings": {"database": "mysql", "port": "3306"},
     "required_field": "config_value"
   }
 }
@@ -89,6 +118,87 @@ python script.py --config config.json --Config.count 200
 ```
 
 This will use values from `config.json` but override `count` to 200.
+
+#### Override Examples for All Supported Types
+
+Create a comprehensive config file `example_config.json`:
+```json
+{
+  "AppConfig": {
+    "name": "config_name",
+    "port": 8080,
+    "rate": 0.5,
+    "debug": false,
+    "environment": "dev",
+    "tags": ["config", "default"],
+    "coordinates": [10, 20, 30],
+    "database": {"host": "localhost", "port": "5432"},
+    "features": {"cache": true, "logging": false}
+  }
+}
+```
+
+**Basic Types Override:**
+```bash
+# Override string
+python script.py --config example_config.json --AppConfig.name "override_name"
+
+# Override integer
+python script.py --config example_config.json --AppConfig.port 9000
+
+# Override float
+python script.py --config example_config.json --AppConfig.rate 0.75
+
+# Override boolean
+python script.py --config example_config.json --AppConfig.debug true
+```
+
+**Literal Types Override:**
+```bash
+# Override Literal choice (assuming environment: Literal["dev", "staging", "prod"])
+python script.py --config example_config.json --AppConfig.environment "prod"
+```
+
+**List Types Override:**
+```bash
+# Override list with comma-separated values
+python script.py --config example_config.json --AppConfig.tags "production,release"
+
+# Override list with bracket notation
+python script.py --config example_config.json --AppConfig.tags "[api,backend]"
+```
+
+**Tuple Types Override:**
+```bash
+# Override tuple with comma-separated values
+python script.py --config example_config.json --AppConfig.coordinates "100,200,300"
+
+# Override tuple with parentheses
+python script.py --config example_config.json --AppConfig.coordinates "(50,75,100)"
+```
+
+**Dict Types Override:**
+```bash
+# Override dict with JSON format
+python script.py --config example_config.json --AppConfig.database '{"host": "prod-db", "port": "3306"}'
+
+# Override dict with key=value format
+python script.py --config example_config.json --AppConfig.features "cache=false,logging=true"
+
+# Override with empty dict
+python script.py --config example_config.json --AppConfig.database "{}"
+```
+
+**Multiple Overrides:**
+```bash
+# Override multiple fields at once
+python script.py --config example_config.json \
+  --AppConfig.name "production" \
+  --AppConfig.port 443 \
+  --AppConfig.debug false \
+  --AppConfig.tags "prod,live" \
+  --AppConfig.database '{"host": "prod-db", "port": "5432", "ssl": "true"}'
+```
 
 ## Priority Order
 
@@ -189,6 +299,7 @@ class Config:
 - `Literal` - Choice from predefined options
 - `list[T]` - List of values of type T (e.g., `list[int]`, `list[str]`)
 - `tuple[T1, T2, ...]` - Tuple of fixed types (e.g., `tuple[int, float, str]`)
+- `dict[K, V]` - Dictionary with key type K and value type V (e.g., `dict[str, int]`, `dict[str, str]`)
 - Custom types (uses type name as metavar)
 
 ### List and Tuple Arguments
@@ -224,6 +335,61 @@ python script.py --ListTupleConfig.coords "(4,5,6)"
 ```
 
 The parser will convert these arguments to the correct Python types.
+
+### Dict Arguments
+
+You can use dict types in your dataclasses. The parser supports multiple input formats for dictionaries:
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class DictConfig:
+    settings: dict[str, str] = field(
+        default_factory=lambda: {"env": "dev", "region": "us-east"},
+        metadata={"help": "Application settings"}
+    )
+    limits: dict[str, int] = field(
+        default_factory=lambda: {"max_users": 100, "timeout": 30},
+        metadata={"help": "System limits"}
+    )
+    rates: dict[str, float] = field(
+        default_factory=lambda: {"cpu": 0.8, "memory": 0.6},
+        metadata={"help": "Resource utilization rates"}
+    )
+
+parser = DataclassArgParser(DictConfig)
+result = parser.parse()
+cfg = result['DictConfig']
+print(cfg.settings)
+print(cfg.limits)
+print(cfg.rates)
+```
+
+#### Command-line usage for dicts:
+
+```bash
+# JSON format (recommended for complex values)
+python script.py --DictConfig.settings '{"env": "prod", "region": "us-west", "debug": "false"}'
+
+# Key=value format (convenient for simple cases)
+python script.py --DictConfig.limits "max_users=500,timeout=60"
+
+# Mixed types work correctly
+python script.py --DictConfig.rates '{"cpu": 0.9, "memory": 0.75, "disk": 0.5}'
+
+# Empty dictionaries
+python script.py --DictConfig.settings "{}"
+python script.py --DictConfig.limits ""
+```
+
+**Dict Type Support:**
+- `dict[str, str]` - String keys and values
+- `dict[str, int]` - String keys, integer values
+- `dict[str, float]` - String keys, float values
+- Automatic type conversion based on annotations
+- Both JSON and key=value input formats supported
 
 ## Config File Formats
 

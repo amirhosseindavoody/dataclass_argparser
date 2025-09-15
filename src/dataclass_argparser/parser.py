@@ -276,14 +276,135 @@ class DataclassArgParser:
 
         return parse_list
 
+    def _dict_type_factory(self, dict_type: Any) -> typing.Callable[[str], dict]:
+        """
+        Return a function that parses a string into a dict of the correct type.
+
+        Args:
+            dict_type: The typing.Dict type to parse.
+
+        Returns:
+            Callable[[str], dict]: A function that parses a string into a dict.
+        """
+
+        def parse_dict(s):
+            try:
+                # Handle empty string as empty dict
+                if not s.strip():
+                    return {}
+
+                # Try JSON format first
+                if s.strip().startswith("{") and s.strip().endswith("}"):
+                    try:
+                        result = json.loads(s)
+                        if not isinstance(result, dict):
+                            raise argparse.ArgumentTypeError(
+                                f"JSON value must be an object/dict, got {type(result).__name__}"
+                            )
+
+                        # Get the expected key and value types
+                        key_type = str  # Default to str
+                        value_type = str  # Default to str
+                        if hasattr(dict_type, "__args__") and dict_type.__args__:
+                            if len(dict_type.__args__) >= 1:
+                                key_type = dict_type.__args__[0]
+                            if len(dict_type.__args__) >= 2:
+                                value_type = dict_type.__args__[1]
+
+                        # Convert keys and values to the expected types
+                        typed_result = {}
+                        for k, v in result.items():
+                            # Convert key
+                            try:
+                                if key_type is not str:
+                                    k = key_type(k)
+                            except Exception:
+                                raise argparse.ArgumentTypeError(
+                                    f"Could not convert key '{k}' to {key_type.__name__}"
+                                )
+
+                            # Convert value
+                            try:
+                                if value_type in (int, float, bool):
+                                    # For basic types, the JSON parsing should handle this correctly
+                                    if not isinstance(v, value_type):
+                                        v = value_type(v)
+                                elif value_type is not str:
+                                    v = value_type(v)
+                            except Exception:
+                                raise argparse.ArgumentTypeError(
+                                    f"Could not convert value '{v}' to {value_type.__name__}"
+                                )
+
+                            typed_result[k] = v
+
+                        return typed_result
+                    except json.JSONDecodeError as e:
+                        raise argparse.ArgumentTypeError(f"Invalid JSON format: {e}")
+
+                # Try key=value,key2=value2 format
+                else:
+                    result = {}
+                    # Get the expected key and value types
+                    key_type = str  # Default to str
+                    value_type = str  # Default to str
+                    if hasattr(dict_type, "__args__") and dict_type.__args__:
+                        if len(dict_type.__args__) >= 1:
+                            key_type = dict_type.__args__[0]
+                        if len(dict_type.__args__) >= 2:
+                            value_type = dict_type.__args__[1]
+
+                    pairs = [pair.strip() for pair in s.split(",") if pair.strip()]
+                    for pair in pairs:
+                        if "=" not in pair:
+                            raise argparse.ArgumentTypeError(
+                                f"Invalid key=value format: '{pair}' (missing '=')"
+                            )
+
+                        key, value = pair.split("=", 1)  # Split only on first =
+                        key = key.strip()
+                        value = value.strip()
+
+                        # Convert key
+                        try:
+                            if key_type is not str:
+                                key = key_type(key)
+                        except Exception:
+                            raise argparse.ArgumentTypeError(
+                                f"Could not convert key '{key}' to {key_type.__name__}"
+                            )
+
+                        # Convert value
+                        try:
+                            if value_type in (int, float, bool):
+                                value = (
+                                    ast.literal_eval(value)
+                                    if value_type in (int, float, bool)
+                                    else value
+                                )
+                                value = value_type(value)
+                            elif value_type is not str:
+                                value = value_type(value)
+                        except Exception:
+                            raise argparse.ArgumentTypeError(
+                                f"Could not convert value '{value}' to {value_type.__name__}"
+                            )
+
+                        result[key] = value
+
+                    return result
+
+            except Exception as e:
+                if isinstance(e, argparse.ArgumentTypeError):
+                    raise
+                raise argparse.ArgumentTypeError(f"Invalid dict value: {s} ({e})")
+
+        return parse_dict
+
     def _add_dataclass_arguments(self) -> None:
         """
         Add arguments to the parser based on dataclass fields, including nested dataclasses.
-        Handles Literal, tuple, list, and nested dataclass types.
-        """
-        """
-        Add arguments to the parser based on dataclass fields, including nested dataclasses.
-        Handles Literal, tuple, list, and nested dataclass types.
+        Handles Literal, tuple, list, dict, and nested dataclass types.
         """
 
         def add_fields(cls, prefix=None):
@@ -348,6 +469,20 @@ class DataclassArgParser:
                     self.parser.add_argument(
                         arg_name,
                         type=self._list_type_factory(arg_type),
+                        help=description,
+                        metavar=metavar,
+                    )
+                    continue
+
+                # Dict
+                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+                    dict,
+                    typing.Dict,
+                ):
+                    metavar = "DICT"
+                    self.parser.add_argument(
+                        arg_name,
+                        type=self._dict_type_factory(arg_type),
                         help=description,
                         metavar=metavar,
                     )
