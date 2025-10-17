@@ -71,10 +71,13 @@ The conda package build is configured in `recipe.yaml` with the following key se
 After building, you can install the package locally:
 
 ```bash
-# Using conda
-conda install -c local dataclass-argparser
+# Option 1: Direct install from file (replace {version} with actual version)
+conda install ./output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
 
-# Using pixi (add to your pixi.toml)
+# Option 2: Using a local channel
+conda install -c file://$(pwd)/output dataclass-argparser
+
+# Option 3: Using pixi (add to your pixi.toml)
 # Replace {version} with the actual version number
 # [dependencies]
 # dataclass-argparser = { path = "output/noarch/dataclass-argparser-{version}-py_0.tar.bz2" }

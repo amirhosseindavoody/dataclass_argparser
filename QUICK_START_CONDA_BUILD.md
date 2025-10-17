@@ -45,7 +45,14 @@ pixi run test-verbose
 
 1. Build: `pixi build`
 2. Package is in: `output/noarch/`
-3. Install locally: `conda install -c local dataclass-argparser`
+3. Install locally:
+   ```bash
+   # Option 1: Direct install from file
+   conda install ./output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
+   
+   # Option 2: Using local channel
+   conda install -c file://$(pwd)/output dataclass-argparser
+   ```
 4. Or upload to conda-forge or other conda channels
 
 ## More Info

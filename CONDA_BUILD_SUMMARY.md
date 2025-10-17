@@ -64,14 +64,14 @@ output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
 ### Installing the Built Package
 
 ```bash
-# Using conda
-conda install -c local dataclass-argparser
-
-# Or specify the full path (replace {version} with actual version)
-conda install output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
+# Option 1: Direct install from file (replace {version} with actual version)
+conda install ./output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
 
 # Example for version 1.0.0:
-conda install output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
+conda install ./output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
+
+# Option 2: Using a local channel
+conda install -c file://$(pwd)/output dataclass-argparser
 ```
 
 ## Key Files
