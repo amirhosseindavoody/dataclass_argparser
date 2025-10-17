@@ -33,7 +33,14 @@ pip install -e ".[test]"
 # Build the package (uses hatchling)
 pip install build
 python -m build
+
+# Build as conda package (requires pixi)
+pixi build
+# or
+pixi run build-conda
 ```
+
+For detailed instructions on building conda packages, see [BUILD.md](BUILD.md).
 
 ## Quick Start
 

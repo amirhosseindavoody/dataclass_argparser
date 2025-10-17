@@ -1,0 +1,42 @@
+package:
+  name: dataclass-argparser
+  version: 1.0.0
+
+source:
+  path: .
+
+build:
+  number: 0
+  script: python -m pip install . --no-deps --ignore-installed -vv
+  noarch: python
+
+requirements:
+  host:
+    - python >=3.7
+    - pip
+    - hatchling
+  run:
+    - python >=3.7
+
+test:
+  imports:
+    - dataclass_argparser
+  commands:
+    - python -c "from dataclass_argparser import DataclassArgParser; print('Import successful')"
+
+about:
+  home: https://github.com/amirhosseindavoody/dataclass_argparser
+  license: MIT
+  license_file: LICENSE
+  summary: A utility for creating command-line argument parsers from dataclasses
+  description: |
+    DataclassArgParser provides a simple way to automatically generate 
+    argparse-based command-line interfaces from Python dataclasses. 
+    It extracts help text from field metadata and provides type-based 
+    metavars for better user experience. It also supports loading 
+    configuration from YAML or JSON files.
+  dev_url: https://github.com/amirhosseindavoody/dataclass_argparser
+
+extra:
+  recipe-maintainers:
+    - amirhosseindavoody
