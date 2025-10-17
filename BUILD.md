@@ -47,6 +47,11 @@ This runs the same `rattler-build build --recipe recipe.yaml` command.
 
 The built conda package will be placed in the `output/` directory with a name like:
 ```
+output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
+```
+
+For example, version 1.0.0:
+```
 output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
 ```
 
@@ -70,8 +75,9 @@ After building, you can install the package locally:
 conda install -c local dataclass-argparser
 
 # Using pixi (add to your pixi.toml)
+# Replace {version} with the actual version number
 # [dependencies]
-# dataclass-argparser = { path = "output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2" }
+# dataclass-argparser = { path = "output/noarch/dataclass-argparser-{version}-py_0.tar.bz2" }
 ```
 
 ## Customizing the Build

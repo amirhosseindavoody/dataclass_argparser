@@ -53,6 +53,11 @@ Both commands will:
 
 The built package will be at:
 ```
+output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
+```
+
+For example, version 1.0.0 would be:
+```
 output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
 ```
 
@@ -62,7 +67,10 @@ output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
 # Using conda
 conda install -c local dataclass-argparser
 
-# Or specify the full path
+# Or specify the full path (replace {version} with actual version)
+conda install output/noarch/dataclass-argparser-{version}-py_0.tar.bz2
+
+# Example for version 1.0.0:
 conda install output/noarch/dataclass-argparser-1.0.0-py_0.tar.bz2
 ```
 
