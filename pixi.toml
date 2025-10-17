@@ -11,6 +11,9 @@ pytest = ">=8.4.1,<9"
 python = ">=3.7"
 pyyaml = ">=6.0.2,<7"
 
+[build-dependencies]
+rattler-build = ">=0.20.0"
+
 [tasks]
 # Testing tasks
 test = "pytest tests/"
@@ -23,7 +26,8 @@ run-override-example = "python examples/override_example.py --help"
 
 # Build tasks
 build = "python -m build"
-clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/ htmlcov/"
+build-conda = "rattler-build build --recipe recipe.yaml"
+clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/ htmlcov/ output/"
 
 # Linting and formatting (optional, can be added if needed)
 format = "echo 'Add formatting tools like black if needed'"
