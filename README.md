@@ -20,6 +20,17 @@ DataclassArgParser provides a simple way to automatically generate argparse-base
 
 ## Installation
 
+### Using Pixi
+
+```bash
+# Install the latest version from main
+pixi add dataclass-argparser --git https://github.com/amirhosseindavoody/dataclass_argparser --branch main
+
+# Install a specific version from tag
+pixi add dataclass-argparser --git https://github.com/amirhosseindavoody/dataclass_argparser --tag v2025.10.20
+```
+
+### Using pip
 ```bash
 # Install the package in development mode
 pip install -e .
