@@ -11,6 +11,8 @@ preview = ["pixi-build"]
 [dependencies]
 dataclass-argparser = {path = "."}
 ipython = ">=9.6.0,<10"
+python-build = ">=1.0.0,<2"
+twine = ">=5.1.0"
 
 [tasks]
 # Testing tasks
@@ -24,6 +26,7 @@ run-override-example = "python examples/override_example.py --help"
 
 # Build tasks
 build = "pixi build --clean --output-dir dist/"
+build-pypi = "python -m build"
 clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/ htmlcov/"
 
 [tasks.test-all]
@@ -61,6 +64,3 @@ hatchling = "*"
 [package.run-dependencies]
 python = ">=3.7"
 pyyaml = ">=6.0.2,<7"
-
-# [pypi-dependencies]
-# dataclass-argparser = {path = "./", editable = true}
