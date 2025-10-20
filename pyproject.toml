@@ -1,7 +1,3 @@
-[build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
-
 [project]
 authors = [
   {name = "Amirhossein Davoody", email = "amirhossein.davoody@gmail.com"},
@@ -38,6 +34,10 @@ yaml = ["PyYAML"]
 [project.urls]
 Homepage = "https://github.com/amirhosseindavoody/dataclass_argparser"
 Repository = "https://github.com/amirhosseindavoody/dataclass_argparser"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dataclass_argparser"]
