@@ -652,7 +652,7 @@ class DataclassArgParser:
             if not has_override and nested_config:
                 # Simplified config override check - if nested_config is non-empty dict, consider it an override
                 has_override = isinstance(nested_config, dict) and bool(nested_config)
-            
+
             if has_override:
                 value = self._merge_nested(
                     arg_type, arg_key, nested_config, parsed_args, config_data
