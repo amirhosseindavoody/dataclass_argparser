@@ -13,6 +13,7 @@ import dataclasses
 import json
 import os
 import typing
+from functools import lru_cache
 from typing import Any, Literal, Type, Union, Optional
 
 try:
@@ -21,6 +22,47 @@ try:
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
+
+
+# Helper functions for type checking with caching
+@lru_cache(maxsize=256)
+def _get_type_origin(type_hint: Any) -> Any:
+    """Get the origin of a type hint with caching."""
+    return getattr(type_hint, "__origin__", None)
+
+
+@lru_cache(maxsize=256)
+def _get_type_args(type_hint: Any) -> tuple:
+    """Get the args of a type hint with caching."""
+    return getattr(type_hint, "__args__", ())
+
+
+@lru_cache(maxsize=256)
+def _is_literal_type(type_hint: Any) -> bool:
+    """Check if a type is a Literal type with caching."""
+    origin = _get_type_origin(type_hint)
+    return origin is Literal
+
+
+@lru_cache(maxsize=256)
+def _is_tuple_type(type_hint: Any) -> bool:
+    """Check if a type is a tuple type with caching."""
+    origin = _get_type_origin(type_hint)
+    return origin in (tuple, typing.Tuple)
+
+
+@lru_cache(maxsize=256)
+def _is_list_type(type_hint: Any) -> bool:
+    """Check if a type is a list type with caching."""
+    origin = _get_type_origin(type_hint)
+    return origin in (list, typing.List)
+
+
+@lru_cache(maxsize=256)
+def _is_dict_type(type_hint: Any) -> bool:
+    """Check if a type is a dict type with caching."""
+    origin = _get_type_origin(type_hint)
+    return origin in (dict, typing.Dict)
 
 
 class DataclassArgParser:
@@ -66,6 +108,8 @@ class DataclassArgParser:
         self._requested_config_flag = config_flag
         # actual dest name for the config argument (populated when added)
         self._config_dest: str = "config"
+        # Cache for dataclass fields to avoid repeated calls
+        self._field_cache: dict[Type[Any], tuple] = {}
         self._add_config_argument(self._requested_config_flag)
 
         # Add any individual flags provided by the caller before dataclass args
@@ -118,9 +162,6 @@ class DataclassArgParser:
     ) -> None:
         """
         Add the config argument for loading configuration from YAML or JSON files.
-        """
-        """
-        Add the config argument for loading configuration from YAML or JSON files.
 
         The caller may provide either a single option string (e.g. "--cfg") or a
         list/tuple of option strings (e.g. ["-c", "--cfg"]). The destination
@@ -144,6 +185,12 @@ class DataclassArgParser:
         # The most-recently-added action corresponds to this argument.
         if self.parser._actions:
             self._config_dest = self.parser._actions[-1].dest
+
+    def _get_fields(self, cls: Type[Any]) -> tuple:
+        """Get dataclass fields with caching to avoid repeated lookups."""
+        if cls not in self._field_cache:
+            self._field_cache[cls] = dataclasses.fields(cls)
+        return self._field_cache[cls]
 
     def _load_config_file(self, config_path: str) -> dict[str, Any]:
         """
@@ -191,9 +238,6 @@ class DataclassArgParser:
     def _tuple_type_factory(self, tuple_type: Any) -> typing.Callable[[str], tuple]:
         """
         Return a function that parses a string into a tuple of the correct type and length.
-        """
-        """
-        Return a function that parses a string into a tuple of the correct type and length.
 
         Args:
             tuple_type: The typing.Tuple type to parse.
@@ -201,13 +245,14 @@ class DataclassArgParser:
         Returns:
             Callable[[str], tuple]: A function that parses a string into a tuple.
         """
+        # Cache type args to avoid repeated lookups
+        expected_types = _get_type_args(tuple_type)
 
         def parse_tuple(s):
             try:
                 if s.startswith("(") and s.endswith(")"):
                     s = s[1:-1]
                 items = [item.strip() for item in s.split(",") if item.strip()]
-                expected_types = tuple_type.__args__
                 if len(items) != len(expected_types):
                     raise argparse.ArgumentTypeError(
                         f"Expected {len(expected_types)} values, got {len(items)}"
@@ -235,9 +280,6 @@ class DataclassArgParser:
     def _list_type_factory(self, list_type: Any) -> typing.Callable[[str], list]:
         """
         Return a function that parses a string into a list of the correct type.
-        """
-        """
-        Return a function that parses a string into a list of the correct type.
 
         Args:
             list_type: The typing.List type to parse.
@@ -245,17 +287,15 @@ class DataclassArgParser:
         Returns:
             Callable[[str], list]: A function that parses a string into a list.
         """
+        # Cache type args to avoid repeated lookups
+        type_args = _get_type_args(list_type)
+        elem_type = type_args[0] if type_args else str
 
         def parse_list(s):
             try:
                 if s.startswith("[") and s.endswith("]"):
                     s = s[1:-1]
                 items = [item.strip() for item in s.split(",") if item.strip()]
-                elem_type = (
-                    list_type.__args__[0]
-                    if hasattr(list_type, "__args__") and list_type.__args__
-                    else str
-                )
                 result = []
                 for item in items:
                     try:
@@ -286,6 +326,10 @@ class DataclassArgParser:
         Returns:
             Callable[[str], dict]: A function that parses a string into a dict.
         """
+        # Cache type args to avoid repeated lookups
+        type_args = _get_type_args(dict_type)
+        key_type = type_args[0] if type_args and len(type_args) >= 1 else str
+        value_type = type_args[1] if type_args and len(type_args) >= 2 else str
 
         def parse_dict(s):
             try:
@@ -301,15 +345,6 @@ class DataclassArgParser:
                             raise argparse.ArgumentTypeError(
                                 f"JSON value must be an object/dict, got {type(result).__name__}"
                             )
-
-                        # Get the expected key and value types
-                        key_type = str  # Default to str
-                        value_type = str  # Default to str
-                        if hasattr(dict_type, "__args__") and dict_type.__args__:
-                            if len(dict_type.__args__) >= 1:
-                                key_type = dict_type.__args__[0]
-                            if len(dict_type.__args__) >= 2:
-                                value_type = dict_type.__args__[1]
 
                         # Convert keys and values to the expected types
                         typed_result = {}
@@ -345,15 +380,6 @@ class DataclassArgParser:
                 # Try key=value,key2=value2 format
                 else:
                     result = {}
-                    # Get the expected key and value types
-                    key_type = str  # Default to str
-                    value_type = str  # Default to str
-                    if hasattr(dict_type, "__args__") and dict_type.__args__:
-                        if len(dict_type.__args__) >= 1:
-                            key_type = dict_type.__args__[0]
-                        if len(dict_type.__args__) >= 2:
-                            value_type = dict_type.__args__[1]
-
                     pairs = [pair.strip() for pair in s.split(",") if pair.strip()]
                     for pair in pairs:
                         if "=" not in pair:
@@ -409,7 +435,7 @@ class DataclassArgParser:
 
         def add_fields(cls, prefix=None):
             prefix = prefix or cls.__name__
-            for field in dataclasses.fields(cls):
+            for field in self._get_fields(cls):
                 arg_name = f"--{prefix}.{field.name}"
                 arg_type = field.type if field.type is not dataclasses.MISSING else str
                 description = field.metadata.get("help", "")
@@ -434,8 +460,8 @@ class DataclassArgParser:
                     continue
 
                 # Literal
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ is Literal:
-                    choices = arg_type.__args__
+                if _is_literal_type(arg_type):
+                    choices = _get_type_args(arg_type)
                     metavar = "{" + ",".join(str(choice) for choice in choices) + "}"
                     self.parser.add_argument(
                         arg_name,
@@ -447,10 +473,7 @@ class DataclassArgParser:
                     continue
 
                 # Tuple
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    tuple,
-                    typing.Tuple,
-                ):
+                if _is_tuple_type(arg_type):
                     metavar = "TUPLE"
                     self.parser.add_argument(
                         arg_name,
@@ -461,10 +484,7 @@ class DataclassArgParser:
                     continue
 
                 # List
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    list,
-                    typing.List,
-                ):
+                if _is_list_type(arg_type):
                     metavar = "LIST"
                     self.parser.add_argument(
                         arg_name,
@@ -475,10 +495,7 @@ class DataclassArgParser:
                     continue
 
                 # Dict
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    dict,
-                    typing.Dict,
-                ):
+                if _is_dict_type(arg_type):
                     metavar = "DICT"
                     self.parser.add_argument(
                         arg_name,
@@ -537,8 +554,8 @@ class DataclassArgParser:
         for cls in self.dataclass_types:
             instance = self._build_instance(cls, parsed_args, config_data)
             result[cls.__name__] = instance
-            # Collect all dataclass argument keys
-            for field in dataclasses.fields(cls):
+            # Collect all dataclass argument keys using cached fields
+            for field in self._get_fields(cls):
                 dataclass_field_names.add(f"{cls.__name__}.{field.name}")
 
         # Add custom flags (not associated with dataclass fields)
@@ -563,7 +580,7 @@ class DataclassArgParser:
         config_section = config_section or config_data.get(cls.__name__, {})
         values = {}
         missing_fields = []
-        for field in dataclasses.fields(cls):
+        for field in self._get_fields(cls):
             field_name = field.name
             arg_key = f"{prefix}.{field_name}"
             arg_type = field.type if field.type is not dataclasses.MISSING else str
@@ -624,22 +641,18 @@ class DataclassArgParser:
                 else {}
             )
             nested_prefix = f"{arg_key}."
+            # More efficient: check if any key starts with nested_prefix using a generator
+            # This avoids creating intermediate lists
             has_override = any(
-                key.startswith(nested_prefix) and parsed_args[key] is not None
+                parsed_args.get(key) is not None
                 for key in parsed_args
+                if key.startswith(nested_prefix)
             )
 
-            def config_has_override(cfg):
-                if isinstance(cfg, dict):
-                    if cfg:
-                        return True
-                    for v in cfg.values():
-                        if config_has_override(v):
-                            return True
-                return False
+            if not has_override and nested_config:
+                # Simplified config override check - if nested_config is non-empty dict, consider it an override
+                has_override = isinstance(nested_config, dict) and bool(nested_config)
 
-            if not has_override:
-                has_override = config_has_override(nested_config)
             if has_override:
                 value = self._merge_nested(
                     arg_type, arg_key, nested_config, parsed_args, config_data
@@ -651,29 +664,21 @@ class DataclassArgParser:
         Handle type-specific conversion for lists and tuples of dataclasses.
         """
         # Handle tuple of dataclasses
-        if (
-            hasattr(arg_type, "__origin__")
-            and arg_type.__origin__ in (tuple, typing.Tuple)
-            and all(
-                dataclasses.is_dataclass(t) for t in getattr(arg_type, "__args__", [])
-            )
-        ):
-            elem_types = arg_type.__args__
-            if isinstance(value, list) and len(value) == len(elem_types):
-                value = tuple(
-                    t(**v) if isinstance(v, dict) else v
-                    for t, v in zip(elem_types, value)
-                )
+        if _is_tuple_type(arg_type):
+            type_args = _get_type_args(arg_type)
+            if type_args and all(dataclasses.is_dataclass(t) for t in type_args):
+                if isinstance(value, list) and len(value) == len(type_args):
+                    value = tuple(
+                        t(**v) if isinstance(v, dict) else v
+                        for t, v in zip(type_args, value)
+                    )
         # Handle list of dataclasses
-        elif (
-            hasattr(arg_type, "__origin__")
-            and arg_type.__origin__ in (list, typing.List)
-            and len(getattr(arg_type, "__args__", [])) == 1
-            and dataclasses.is_dataclass(arg_type.__args__[0])
-        ):
-            elem_type = arg_type.__args__[0]
-            if isinstance(value, list):
-                value = [elem_type(**v) if isinstance(v, dict) else v for v in value]
+        elif _is_list_type(arg_type):
+            type_args = _get_type_args(arg_type)
+            if type_args and len(type_args) == 1 and dataclasses.is_dataclass(type_args[0]):
+                elem_type = type_args[0]
+                if isinstance(value, list):
+                    value = [elem_type(**v) if isinstance(v, dict) else v for v in value]
         return value
 
     def _merge_nested(
@@ -689,7 +694,7 @@ class DataclassArgParser:
         """
         vals = {}
         missing_fields = []
-        for f in dataclasses.fields(cls_nested):
+        for f in self._get_fields(cls_nested):
             k_cli = f"{prefix_nested}.{f.name}"
             # CLI
             if k_cli in parsed_args and parsed_args[k_cli] is not None:
