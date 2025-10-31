@@ -73,22 +73,22 @@ class DataclassArgParser:
         # - (name, kwargs) where name is a str or a tuple/list of option strings and kwargs is a dict
         # - {'names': name_or_list, 'kwargs': {...}}
         if flags:
-            for item in flags:
-                if isinstance(item, dict) and "names" in item:
-                    names = item["names"]
-                    kwargs = item.get("kwargs", {})
-                elif isinstance(item, (list, tuple)) and len(item) == 2:
-                    names, kwargs = item
+            for flag_specification in flags:
+                if isinstance(flag_specification, dict) and "names" in flag_specification:
+                    flag_names = flag_specification["names"]
+                    flag_kwargs = flag_specification.get("kwargs", {})
+                elif isinstance(flag_specification, (list, tuple)) and len(flag_specification) == 2:
+                    flag_names, flag_kwargs = flag_specification
                 else:
                     raise ValueError(
                         "Each flag must be (names, kwargs) tuple or {'names': ..., 'kwargs': ...} dict"
                     )
 
                 # Normalize single name to tuple for add_argument
-                if isinstance(names, str):
-                    names = (names,)
+                if isinstance(flag_names, str):
+                    flag_names = (flag_names,)
 
-                self.add_flag(*names, **(kwargs or {}))
+                self.add_flag(*flag_names, **(flag_kwargs or {}))
 
         self._add_dataclass_arguments()
 
@@ -104,9 +104,9 @@ class DataclassArgParser:
             **kwargs: Keyword arguments passed through to argparse.ArgumentParser.add_argument.
         """
         # Check for name conflicts with existing option strings
-        for n in names:
-            if n in self.parser._option_string_actions:
-                raise ValueError(f"Flag name conflict: {n}")
+        for flag_name in names:
+            if flag_name in self.parser._option_string_actions:
+                raise ValueError(f"Flag name conflict: {flag_name}")
 
         # Simply forward to the underlying argparse parser. This provides a
         # convenient way to mix manually-declared flags with auto-generated
@@ -118,9 +118,6 @@ class DataclassArgParser:
     ) -> None:
         """
         Add the config argument for loading configuration from YAML or JSON files.
-        """
-        """
-        Add the config argument for loading configuration from YAML or JSON files.
 
         The caller may provide either a single option string (e.g. "--cfg") or a
         list/tuple of option strings (e.g. ["-c", "--cfg"]). The destination
@@ -129,12 +126,12 @@ class DataclassArgParser:
         """
         # Normalize to sequence of option strings
         if isinstance(config_flag, str):
-            names = (config_flag,)
+            config_option_strings = (config_flag,)
         else:
-            names = tuple(config_flag)
+            config_option_strings = tuple(config_flag)
 
         self.parser.add_argument(
-            *names,
+            *config_option_strings,
             type=str,
             metavar="FILE",
             help="Path to configuration file (YAML or JSON format)",
