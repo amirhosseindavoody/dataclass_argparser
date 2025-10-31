@@ -191,6 +191,74 @@ class TestKeywordArguments:
         verbose: bool = res.get("verbose", False)
         assert isinstance(verbose, bool)
 
+    def test_config_file_with_keyword_argument(self):
+        """Test that config files work with keyword arguments."""
+        import json
+        import tempfile
+        import os
+        
+        config_data = {"global_config": {"name": "from_config", "count": 999}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+        
+        try:
+            parser = DataclassArgParser(global_config=GlobalConfig)
+            result = parser.parse(["--config", config_path])
+            
+            assert result['global_config'].name == "from_config"
+            assert result['global_config'].count == 999
+        finally:
+            os.unlink(config_path)
+
+    def test_config_file_override_with_cli_keyword_argument(self):
+        """Test that CLI overrides config file for keyword arguments."""
+        import json
+        import tempfile
+        import os
+        
+        config_data = {"global_config": {"name": "from_config", "count": 888}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+        
+        try:
+            parser = DataclassArgParser(global_config=GlobalConfig)
+            result = parser.parse([
+                "--config", config_path,
+                "--global_config.name", "from_cli"
+            ])
+            
+            assert result['global_config'].name == "from_cli"
+            assert result['global_config'].count == 888
+        finally:
+            os.unlink(config_path)
+
+    def test_mixed_positional_keyword_with_config_file(self):
+        """Test config file with mixed positional and keyword dataclass arguments."""
+        import json
+        import tempfile
+        import os
+        
+        config_data = {
+            "GlobalConfig": {"name": "config_pos", "count": 111},
+            "custom_app": {"version": "2.0", "debug": True}
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+        
+        try:
+            parser = DataclassArgParser(GlobalConfig, custom_app=AppConfig)
+            result = parser.parse(["--config", config_path])
+            
+            assert result["GlobalConfig"].name == "config_pos"
+            assert result["GlobalConfig"].count == 111
+            assert result["custom_app"].version == "2.0"
+            assert result["custom_app"].debug is True
+        finally:
+            os.unlink(config_path)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
