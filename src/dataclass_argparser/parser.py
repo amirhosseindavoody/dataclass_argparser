@@ -670,7 +670,10 @@ class DataclassArgParser:
         ):
             list_element_type = field_type.__args__[0]
             if isinstance(field_value, list):
-                field_value = [list_element_type(**element_value) if isinstance(element_value, dict) else element_value for element_value in field_value]
+                field_value = [
+                    list_element_type(**element_value) if isinstance(element_value, dict) else element_value
+                    for element_value in field_value
+                ]
         return field_value
 
     def _merge_nested(
