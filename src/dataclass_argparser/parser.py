@@ -69,12 +69,15 @@ class DataclassArgParser:
             ValueError: If 'config_flag' is used as a dataclass keyword argument name.
         """
         # Validate that flags parameter is not a dataclass (common mistake)
+        # This check is necessary because when someone passes `flags=GlobalConfig`,
+        # it's interpreted as the flags parameter, not as a keyword argument in dataclass_kwargs.
         if flags is not None and dataclasses.is_dataclass(flags):
             raise ValueError(
                 "The keyword 'flags' is reserved for non-dataclass arguments and cannot be used as a dataclass argument name."
             )
         
         # Validate that config_flag parameter is not a dataclass (common mistake)
+        # Similar to above, this catches the case where someone passes `config_flag=SomeDataclass`.
         if dataclasses.is_dataclass(config_flag):
             raise ValueError(
                 "The keyword 'config_flag' is reserved for specifying the flag for config files and cannot be used as a dataclass argument name."
@@ -117,7 +120,8 @@ class DataclassArgParser:
         # can be customized by the caller (default: "--config").
         self._requested_config_flag = config_flag
         # actual dest name for the config argument (populated when added)
-        self._config_dest: str = "config"
+        # If config is disabled (used as dataclass keyword), use a different dest to avoid conflicts
+        self._config_dest: str = "_disabled_config" if self._disable_default_config else "config"
         
         # Only add config argument if 'config' is not used as a dataclass keyword
         if not self._disable_default_config:
