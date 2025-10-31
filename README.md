@@ -237,16 +237,27 @@ Main class for creating argument parsers from dataclasses.
 #### Constructor
 
 ```python
-DataclassArgParser(*dataclass_types: Type[Any], flags: Optional[list] = None, config_flag: Union[str, list[str], tuple[str, ...]] = "--config")
+DataclassArgParser(
+    *dataclass_types: Type[Any],
+    flags: Optional[list] = None,
+    config_flag: Union[str, list[str], tuple[str, ...]] = "--config",
+    **dataclass_kwargs: Type[Any]
+)
 ```
 
 **Parameters:**
-- `*dataclass_types`: One or more dataclass types to generate arguments from
+- `*dataclass_types`: One or more dataclass types to generate arguments from (positional arguments). The class name will be used as the key in the result dictionary.
 - `flags` (optional): A list of custom flags to add to the underlying parser. Each item may be either:
   - a tuple/list of `(short_flag, long_flag, kwargs_dict)` where `short_flag` and `long_flag` are option strings (e.g. `'-v'`, `'--verbose'`), and `kwargs_dict` is a dict of keyword args forwarded to `argparse.ArgumentParser.add_argument`; or
   - a dict of the form `{'names': name_or_list, 'kwargs': {...}}`.
   This lets you mix manually-declared flags (for example `--verbose`, `--dry-run`) with auto-generated dataclass arguments.
 - `config_flag` (optional): Customize the command-line option(s) used to load a config file. Accepts a single string (e.g. `'--cfg'`) or a list/tuple of option strings (e.g. `['-c', '--config']`). The default is `"--config"`.
+- `**dataclass_kwargs`: Dataclass types passed as keyword arguments. The keyword name will be used as the key in the result dictionary instead of the class name. This allows custom naming and more Pythonic usage.
+
+**Reserved Keywords:**
+- `flags`: Reserved for custom flag specification. Cannot be used as a dataclass keyword argument name.
+- `config_flag`: Reserved for config file flag specification. Cannot be used as a dataclass keyword argument name.
+- `config`: Can be used as a dataclass keyword argument name, but doing so will disable the default config file loading mechanism. The `config` keyword will then be treated as a regular dataclass argument.
 
 #### Methods
 
@@ -258,10 +269,115 @@ Parse command-line arguments and return dataclass instances.
 - `args`: Optional list of arguments to parse. If None, uses sys.argv.
 
 **Returns:**
-- Dict mapping dataclass names to their instantiated objects with parsed values.
+- Dict mapping dataclass names (or custom keyword names) to their instantiated objects with parsed values.
 
 **Raises:**
 - `SystemExit`: If required fields are not provided either as command-line arguments or in the config file.
+
+## Keyword Arguments for Dataclasses
+
+You can pass dataclass types as keyword arguments to customize the names used in the result dictionary. This provides a more flexible and Pythonic interface.
+
+### Basic Keyword Arguments
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class GlobalConfig:
+    name: str = field(default="test", metadata={"help": "The name to use"})
+
+# Use keyword argument to specify custom name
+parser = DataclassArgParser(global_config=GlobalConfig)
+result = parser.parse()
+
+# Access using the custom name
+config = result["global_config"]
+print(config.name)
+```
+
+### Mixing Positional and Keyword Arguments
+
+You can mix positional and keyword arguments. Positional arguments use the class name as the key, while keyword arguments use the custom name:
+
+```python
+@dataclass
+class AppConfig:
+    version: str = field(default="1.0", metadata={"help": "App version"})
+
+# Mix positional and keyword
+parser = DataclassArgParser(
+    GlobalConfig,           # Uses "GlobalConfig" as key
+    app_config=AppConfig    # Uses "app_config" as key
+)
+result = parser.parse()
+
+print(result["GlobalConfig"].name)  # Positional
+print(result["app_config"].version)  # Keyword
+```
+
+### Example from Command Line
+
+When using keyword arguments, the CLI argument names reflect the custom names:
+
+```bash
+# With keyword argument name "global_config"
+python script.py --global_config.name "myname" --global_config.count 10
+
+# With positional argument (uses class name "GlobalConfig")
+python script.py --GlobalConfig.name "myname" --GlobalConfig.count 10
+```
+
+### Reserved Keywords
+
+Three keywords are reserved and have special behavior:
+
+1. **`flags`**: Reserved for custom flag specification. Attempting to use it as a dataclass keyword will raise a `ValueError`.
+
+2. **`config_flag`**: Reserved for specifying the config file flag. Attempting to use it as a dataclass keyword will raise a `ValueError`.
+
+3. **`config`**: Can be used as a dataclass keyword argument name, but doing so disables the default config file loading mechanism. When `config` is used as a dataclass name, it becomes a regular argument and config file loading is turned off.
+
+```python
+# This raises an error
+try:
+    parser = DataclassArgParser(flags=GlobalConfig)
+except ValueError as e:
+    print(e)  # "The keyword 'flags' is reserved..."
+
+# This is allowed but disables config file loading
+parser = DataclassArgParser(config=GlobalConfig)
+result = parser.parse(["--config.name", "value"])
+print(result["config"].name)  # Uses "config" as dataclass argument
+```
+
+### Complete Example with Keyword Arguments
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class GlobalConfig:
+    name: str = field(default="test", metadata={"help": "The name to use"})
+
+parser = DataclassArgParser(
+    global_config=GlobalConfig,
+    flags=[(
+        ('-v', '--verbose'),
+        {'action': 'store_true', 'help': 'Enable verbose output'}
+    )],
+    config_flag=('-c', '--config'),
+)
+result = parser.parse()
+
+global_config: GlobalConfig = result["global_config"]
+verbose: bool = result.get("verbose", False)
+
+print(f"Name: {global_config.name}")
+print(f"Verbose: {verbose}")
+```
 
 ## Custom flags and configurable config-file option
 
