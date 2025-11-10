@@ -1,0 +1,27 @@
+# GitHub Copilot Agent Environment Configuration
+# This file configures how the Copilot coding agent sets up its environment
+# See: https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+
+version: 1
+
+environment:
+  # Setup pixi for dependency management
+  setup:
+    - name: Install pixi
+      run: |
+        # Install pixi package manager
+        curl -fsSL https://pixi.sh/install.sh | bash
+        echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+    
+    - name: Verify pixi installation
+      run: |
+        pixi --version
+    
+    - name: Install project dependencies
+      run: |
+        pixi install
+  
+  # Validation steps to ensure environment is ready
+  validation:
+    - name: Run test suite
+      run: pixi run test-verbose

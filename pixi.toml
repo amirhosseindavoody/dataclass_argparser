@@ -17,7 +17,7 @@ twine = ">=5.1.0"
 [tasks]
 # Testing tasks
 test = "pytest tests/"
-test-coverage = "pytest --cov=src/dataclass_argparser --cov-report=html --cov-report=term tests/"
+test-coverage = "pytest --cov=src/dataclass_argparser --cov-report=html --cov-report=term --cov-report=xml tests/"
 test-verbose = "pytest -v tests/"
 
 # Example tasks
