@@ -15,8 +15,13 @@ DataclassArgParser provides a simple way to automatically generate argparse-base
 - **Command-line override** of config file values
 - **Required field validation** with clear error messages
 - **Multiple dataclass support** in a single parser
+- **Nested dataclass support** with dot notation for field access
 - **Literal type support** with choice validation
-- **Modern build system** using Hatchling for packaging
+- **Dictionary type support** with JSON and key=value formats
+- **List and tuple type support** for collections
+- **Custom flags** for mixing dataclass args with manual flags
+- **Configurable config flag** option (e.g., `-c`, `--config`)
+- **Modern build system** using pixi-build and Hatchling
 
 ## Installation
 
@@ -218,14 +223,58 @@ Values are resolved in this priority order (highest to lowest):
 2. Config file values
 3. Dataclass default values
 
-## Testing
+## Development and Testing
+
+### Running Tests with Pixi
 
 ```bash
-# Run tests
-python -m pytest dataclass_argparser/tests/
+# Run tests with verbose output (recommended)
+pixi run test-verbose
+
+# Run basic tests
+pixi run test
+
+# Run tests with coverage report (HTML, terminal, and XML)
+pixi run test-coverage
+
+# Run all tests including examples validation
+pixi run test-all
+```
+
+### Running Tests with pytest
+
+```bash
+# Run tests directly
+python -m pytest tests/
 
 # Run with coverage
-python -m pytest dataclass_argparser/tests/ --cov=dataclass_argparser
+python -m pytest tests/ --cov=src/dataclass_argparser --cov-report=html --cov-report=term
+```
+
+### Building the Package
+
+```bash
+# Build with pixi-build (conda packages)
+pixi run build
+
+# Build with Hatchling (PyPI packages)
+pixi run build-pypi
+
+# Clean build artifacts
+pixi run clean
+```
+
+### Running Examples
+
+```bash
+# Show basic example help
+pixi run run-basic-example
+
+# Show override example help
+pixi run run-override-example
+
+# Run full demo
+pixi run demo
 ```
 
 ## API Reference
@@ -242,13 +291,39 @@ DataclassArgParser(*dataclass_types: Type[Any], flags: Optional[list] = None, co
 
 **Parameters:**
 - `*dataclass_types`: One or more dataclass types to generate arguments from
-- `flags` (optional): A list of custom flags to add to the underlying parser. Each item may be either:
-  - a tuple/list of `(short_flag, long_flag, kwargs_dict)` where `short_flag` and `long_flag` are option strings (e.g. `'-v'`, `'--verbose'`), and `kwargs_dict` is a dict of keyword args forwarded to `argparse.ArgumentParser.add_argument`; or
-  - a dict of the form `{'names': name_or_list, 'kwargs': {...}}`.
-  This lets you mix manually-declared flags (for example `--verbose`, `--dry-run`) with auto-generated dataclass arguments.
-- `config_flag` (optional): Customize the command-line option(s) used to load a config file. Accepts a single string (e.g. `'--cfg'`) or a list/tuple of option strings (e.g. `['-c', '--config']`). The default is `"--config"`.
+- `flags` (optional): A list of custom flags to add to the parser. Each item can be:
+  - A tuple: `(name_or_names, kwargs_dict)` where `name_or_names` is a string like `'--verbose'` or a list like `['-v', '--verbose']`, and `kwargs_dict` contains argparse keyword arguments
+  - A dict: `{'names': name_or_names, 'kwargs': {...}}` with the same structure
+
+  Examples:
+  ```python
+  flags=[
+      ("--verbose", {"action": "store_true", "help": "Verbose mode"}),
+      (["--log", "-l"], {"type": str, "help": "Log file"}),
+      {"names": "--debug", "kwargs": {"action": "store_true"}},
+  ]
+  ```
+- `config_flag` (optional): Customize the config file option. Accepts:
+  - A single string: `"--config"` or `"--cfg"`
+  - A list/tuple: `['-c', '--config']` or `('-c', '--cfg')`
+
+  Default is `"--config"`. The parser will accept the specified option(s) for loading configuration files.
 
 #### Methods
+
+##### add_flag(*names: str, **kwargs: Any) -> None
+
+Add an individual command-line flag/argument to the parser.
+
+**Parameters:**
+- `*names`: One or more option strings (e.g., `'--verbose'` or `'-v'`, `'--verbose'`)
+- `**kwargs`: Keyword arguments passed through to `argparse.ArgumentParser.add_argument()`
+
+**Example:**
+```python
+parser.add_flag('--verbose', '-v', action='store_true', help='Enable verbose output')
+parser.add_flag('--output', type=str, default='out.txt', help='Output file')
+```
 
 ##### parse(args=None) -> Dict[str, Any]
 
@@ -258,7 +333,7 @@ Parse command-line arguments and return dataclass instances.
 - `args`: Optional list of arguments to parse. If None, uses sys.argv.
 
 **Returns:**
-- Dict mapping dataclass names to their instantiated objects with parsed values.
+- Dict mapping dataclass names to their instantiated objects with parsed values. Custom flags are included as top-level keys in the dictionary.
 
 **Raises:**
 - `SystemExit`: If required fields are not provided either as command-line arguments or in the config file.
@@ -307,10 +382,11 @@ class Config:
 - `int` - Integer values
 - `float` - Float values
 - `bool` - Boolean values
-- `Literal` - Choice from predefined options
+- `Literal[...]` - Choice from predefined options (e.g., `Literal["dev", "staging", "prod"]`)
 - `list[T]` - List of values of type T (e.g., `list[int]`, `list[str]`)
 - `tuple[T1, T2, ...]` - Tuple of fixed types (e.g., `tuple[int, float, str]`)
 - `dict[K, V]` - Dictionary with key type K and value type V (e.g., `dict[str, int]`, `dict[str, str]`)
+- Nested dataclasses - Dataclass types as fields with dot notation access
 - Custom types (uses type name as metavar)
 
 ### List and Tuple Arguments
@@ -402,6 +478,140 @@ python script.py --DictConfig.limits ""
 - Automatic type conversion based on annotations
 - Both JSON and key=value input formats supported
 
+### Nested Dataclasses
+
+DataclassArgParser supports nested dataclasses, allowing you to organize configuration hierarchically:
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class DatabaseConfig:
+    host: str = field(default="localhost", metadata={"help": "Database host"})
+    port: int = field(default=5432, metadata={"help": "Database port"})
+    name: str = field(default="mydb", metadata={"help": "Database name"})
+
+@dataclass
+class ServerConfig:
+    host: str = field(default="0.0.0.0", metadata={"help": "Server host"})
+    port: int = field(default=8000, metadata={"help": "Server port"})
+
+@dataclass
+class AppConfig:
+    app_name: str = field(default="MyApp", metadata={"help": "Application name"})
+    database: DatabaseConfig = field(default_factory=DatabaseConfig, metadata={"help": "Database configuration"})
+    server: ServerConfig = field(default_factory=ServerConfig, metadata={"help": "Server configuration"})
+
+parser = DataclassArgParser(AppConfig)
+result = parser.parse()
+config = result['AppConfig']
+
+print(f"App: {config.app_name}")
+print(f"Database: {config.database.host}:{config.database.port}/{config.database.name}")
+print(f"Server: {config.server.host}:{config.server.port}")
+```
+
+#### Command-line usage for nested dataclasses:
+
+```bash
+# Override nested fields using dot notation
+python script.py \
+  --AppConfig.app_name "ProductionApp" \
+  --AppConfig.database.host "prod-db.example.com" \
+  --AppConfig.database.port 3306 \
+  --AppConfig.database.name "prod_db" \
+  --AppConfig.server.port 443
+```
+
+#### Config file for nested dataclasses:
+
+```json
+{
+  "AppConfig": {
+    "app_name": "ProductionApp",
+    "database": {
+      "host": "prod-db.example.com",
+      "port": 3306,
+      "name": "prod_db"
+    },
+    "server": {
+      "host": "0.0.0.0",
+      "port": 443
+    }
+  }
+}
+```
+
+You can also override specific nested fields from command line while loading the rest from config:
+
+```bash
+python script.py --config app_config.json --AppConfig.database.port 5433
+```
+
+### Custom Flags
+
+DataclassArgParser allows you to mix custom command-line flags with auto-generated dataclass arguments:
+
+```python
+from dataclasses import dataclass, field
+from dataclass_argparser import DataclassArgParser
+
+@dataclass
+class AppConfig:
+    name: str = field(default="example", metadata={"help": "Application name"})
+    port: int = field(default=8080, metadata={"help": "Port number"})
+
+# Method 1: Add flags in constructor
+parser = DataclassArgParser(
+    AppConfig,
+    flags=[
+        ("--verbose", {"action": "store_true", "help": "Enable verbose output"}),
+        {"names": ["--quiet", "-q"], "kwargs": {"action": "store_true", "help": "Quiet mode"}},
+        (["--log-file", "-l"], {"type": str, "help": "Path to log file"}),
+    ],
+    config_flag=["-c", "--config"],  # Customize config flag
+)
+
+# Method 2: Add flags after construction using add_flag()
+parser.add_flag("--debug", "-d", action="store_true", help="Enable debug mode")
+parser.add_flag("--output", "-o", type=str, default="output.txt", help="Output file path")
+
+result = parser.parse()
+
+# Access dataclass instance
+config = result["AppConfig"]
+print(f"App name: {config.name}, Port: {config.port}")
+
+# Access custom flags
+if result.get("verbose"):
+    print("Verbose mode enabled")
+if result.get("debug"):
+    print("Debug mode enabled")
+if result.get("log_file"):
+    print(f"Logging to: {result['log_file']}")
+```
+
+#### Command-line usage with custom flags:
+
+```bash
+python script.py \
+  --AppConfig.name "MyApp" \
+  --AppConfig.port 9000 \
+  --verbose \
+  --debug \
+  --log-file /var/log/app.log \
+  -o results.json
+```
+
+**Custom Flag Features:**
+- Add flags via `flags` parameter in constructor
+- Add flags dynamically with `add_flag()` method
+- Support for short and long option names (e.g., `-v`, `--verbose`)
+- Custom flags appear as top-level keys in the result dictionary
+- Automatic conflict detection with dataclass field names
+- Full support for all argparse argument types and options
+
 ## Config File Formats
 
 ### JSON
@@ -422,10 +632,48 @@ ConfigClass:
 ## Error Handling
 
 The parser provides clear error messages for:
-- Missing required fields
-- Invalid config file formats
-- Type validation errors
-- Invalid literal choices
+- **Missing required fields**: Shows which fields need to be provided via CLI or config file
+- **Invalid config file formats**: Detects malformed JSON/YAML with specific error details
+- **Type validation errors**: Reports when values cannot be converted to expected types
+- **Invalid literal choices**: Shows allowed values when an invalid choice is provided
+- **File not found**: Clear message when config file path is invalid
+- **Flag name conflicts**: Prevents custom flags from colliding with dataclass field names
+- **Dict parsing errors**: Helpful messages for malformed dictionary inputs (JSON or key=value format)
+- **Tuple/List length mismatches**: Validates correct number of elements for typed tuples
+
+All errors are surfaced through argparse's error mechanism, providing consistent error reporting with usage information.
+
+## Project Structure
+
+```
+dataclass_argparser/
+├── src/
+│   └── dataclass_argparser/
+│       ├── __init__.py
+│       └── parser.py          # Main implementation
+├── tests/
+│   ├── test_parser.py         # Core functionality tests
+│   ├── test_list_types.py     # List type support tests
+│   ├── test_tuple_types.py    # Tuple type support tests
+│   ├── test_dict_types.py     # Dictionary type support tests
+│   ├── test_nested_types.py   # Nested dataclass tests
+│   ├── test_config_files.py   # Config file loading tests
+│   ├── test_custom_flags.py   # Custom flags tests
+│   └── test_default_values.py # Default value handling tests
+├── examples/
+│   ├── basic_example.py       # Basic usage example
+│   ├── override_example.py    # Config override example
+│   ├── custom_flags_example.py # Custom flags example
+│   ├── example_config.json    # Sample config file
+│   └── override_config.json   # Override config file
+├── pixi.toml                  # Pixi package configuration
+├── pyproject.toml             # Python package metadata
+└── README.md                  # This file
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
 
