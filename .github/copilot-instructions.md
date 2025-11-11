@@ -62,3 +62,10 @@ If you are unsure about a pattern or workflow, check the README and the test fil
 - **Dataclass Support**: Requires Python 3.9+ for dataclass support.
 - **YAML Support**: Optional, requires `PyYAML` for YAML config files.
 
+## CI/CD and GitHub Actions
+- **Workflow**: The project uses GitHub Actions with pixi for CI/CD (`.github/workflows/ci.yml`)
+- **Test Matrix**: Tests run on Ubuntu, macOS, and Windows
+- **Build Process**: Uses pixi for building both conda and PyPI packages
+- **Coverage**: Test coverage is generated and uploaded to Codecov (Ubuntu only)
+- **Examples**: All examples are tested as part of CI to ensure they work correctly
+
