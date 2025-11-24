@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Pixi
+      uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        pixi-version: v0.34.0
+        cache: true
+
+    - name: Run tests
+      run: pixi run test-verbose
+
+    - name: Run test coverage
+      run: pixi run test-coverage
+      if: matrix.os == 'ubuntu-latest'
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      if: matrix.os == 'ubuntu-latest'
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Pixi
+      uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        pixi-version: v0.34.0
+        cache: true
+
+    - name: Build package with pixi-build
+      run: pixi run build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+        retention-days: 7
+
+    - name: Build PyPI package
+      run: pixi run build-pypi
+
+    - name: Upload PyPI artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: pypi-dist
+        path: dist/
+        retention-days: 7
+
+  examples:
+    name: Test examples
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Pixi
+      uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        pixi-version: v0.34.0
+        cache: true
+
+    - name: Run all example tests
+      run: pixi run test-all
