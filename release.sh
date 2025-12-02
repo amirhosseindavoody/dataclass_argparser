@@ -16,6 +16,7 @@ TAG_NAME="v$NEW_VERSION"
 # Commit the version change
 git add "$PYPROJECT_FILE" "$SCRIPT_DIR/pixi.toml" "$SCRIPT_DIR/pixi.lock"
 git commit -m "Bump version to $NEW_VERSION" || echo "No changes to commit (version already up to date)"
+git push
 
 echo "Creating release tag: $TAG_NAME"
 
