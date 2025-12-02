@@ -13,6 +13,8 @@ dataclass-argparser = {path = "."}
 ipython = ">=9.6.0,<10"
 python-build = ">=1.0.0,<2"
 twine = ">=5.1.0"
+pytest = ">=9.0.1,<10"
+result = ">=0.17.0,<0.18"
 
 [tasks]
 # Testing tasks

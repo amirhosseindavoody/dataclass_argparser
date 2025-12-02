@@ -14,6 +14,7 @@ import json
 import os
 import typing
 from typing import Any, Literal, Type, Union, Optional
+from result import Result, Ok, Err
 
 try:
     import yaml
@@ -21,6 +22,23 @@ try:
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
+
+
+def _strict_bool(value: str) -> bool:
+    """
+    Parse a string to a boolean value strictly.
+
+    Only accepts 'True', 'true', 'False', 'false', '1', '0' as valid values.
+    Raises argparse.ArgumentTypeError for any other string.
+    """
+    if value in ("True", "true", "1"):
+        return True
+    elif value in ("False", "false", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(
+            f"Invalid boolean value: '{value}'. Must be one of: True, true, False, false, 1, 0"
+        )
 
 
 class DataclassArgParser:
@@ -323,18 +341,37 @@ class DataclassArgParser:
                                     f"Could not convert key '{k}' to {key_type.__name__}"
                                 )
 
-                            # Convert value
-                            try:
-                                if value_type in (int, float, bool):
-                                    # For basic types, the JSON parsing should handle this correctly
-                                    if not isinstance(v, value_type):
-                                        v = value_type(v)
-                                elif value_type is not str:
+                            # Strict type validation for value
+                            if value_type is int:
+                                if not isinstance(v, int) or isinstance(v, bool):
+                                    raise argparse.ArgumentTypeError(
+                                        f"Expected int for value, got {type(v).__name__}: {v!r}"
+                                    )
+                            elif value_type is float:
+                                if not isinstance(v, (int, float)) or isinstance(
+                                    v, bool
+                                ):
+                                    raise argparse.ArgumentTypeError(
+                                        f"Expected float for value, got {type(v).__name__}: {v!r}"
+                                    )
+                                v = float(v)
+                            elif value_type is bool:
+                                if not isinstance(v, bool):
+                                    raise argparse.ArgumentTypeError(
+                                        f"Expected bool for value, got {type(v).__name__}: {v!r}"
+                                    )
+                            elif value_type is str:
+                                if not isinstance(v, str):
+                                    raise argparse.ArgumentTypeError(
+                                        f"Expected str for value, got {type(v).__name__}: {v!r}"
+                                    )
+                            else:
+                                try:
                                     v = value_type(v)
-                            except Exception:
-                                raise argparse.ArgumentTypeError(
-                                    f"Could not convert value '{v}' to {value_type.__name__}"
-                                )
+                                except Exception:
+                                    raise argparse.ArgumentTypeError(
+                                        f"Could not convert value '{v}' to {value_type.__name__}"
+                                    )
 
                             typed_result[k] = v
 
@@ -374,21 +411,49 @@ class DataclassArgParser:
                                 f"Could not convert key '{key}' to {key_type.__name__}"
                             )
 
-                        # Convert value
+                        # Convert value with strict type checking
                         try:
-                            if value_type in (int, float, bool):
-                                value = (
-                                    ast.literal_eval(value)
-                                    if value_type in (int, float, bool)
-                                    else value
+                            parsed_value = ast.literal_eval(value)
+                        except (ValueError, SyntaxError):
+                            # Not a literal, treat as string
+                            parsed_value = value
+
+                        if value_type is int:
+                            if not isinstance(parsed_value, int) or isinstance(
+                                parsed_value, bool
+                            ):
+                                raise argparse.ArgumentTypeError(
+                                    f"Expected int for value, got {type(parsed_value).__name__}: {value!r}"
                                 )
+                            value = parsed_value
+                        elif value_type is float:
+                            if not isinstance(parsed_value, (int, float)) or isinstance(
+                                parsed_value, bool
+                            ):
+                                raise argparse.ArgumentTypeError(
+                                    f"Expected float for value, got {type(parsed_value).__name__}: {value!r}"
+                                )
+                            value = float(parsed_value)
+                        elif value_type is bool:
+                            if isinstance(parsed_value, bool):
+                                value = parsed_value
+                            elif value in ("True", "true", "1"):
+                                value = True
+                            elif value in ("False", "false", "0"):
+                                value = False
+                            else:
+                                raise argparse.ArgumentTypeError(
+                                    f"Expected bool for value, got: {value!r}"
+                                )
+                        elif value_type is str:
+                            value = value  # Keep as string
+                        else:
+                            try:
                                 value = value_type(value)
-                            elif value_type is not str:
-                                value = value_type(value)
-                        except Exception:
-                            raise argparse.ArgumentTypeError(
-                                f"Could not convert value '{value}' to {value_type.__name__}"
-                            )
+                            except Exception:
+                                raise argparse.ArgumentTypeError(
+                                    f"Could not convert value '{value}' to {value_type.__name__}"
+                                )
 
                         result[key] = value
 
@@ -491,18 +556,23 @@ class DataclassArgParser:
                 # Basic types
                 if arg_type is int:
                     metavar = "INT"
+                    parser_type = int
                 elif arg_type is float:
                     metavar = "FLOAT"
+                    parser_type = float
                 elif arg_type is str:
                     metavar = "STRING"
+                    parser_type = str
                 elif arg_type is bool:
                     metavar = "BOOL"
+                    parser_type = _strict_bool
                 else:
                     metavar = arg_type.__name__.upper()
+                    parser_type = arg_type
 
                 self.parser.add_argument(
                     arg_name,
-                    type=arg_type,
+                    type=parser_type,
                     help=description,
                     metavar=metavar,
                 )
@@ -547,6 +617,26 @@ class DataclassArgParser:
                 result[key] = value
         return result
 
+    # TODO: Add tests for safe_parse
+    def safe_parse(
+        self, args: Optional[list[str]] = None
+    ) -> Result[dict[str, Any], str]:
+        """
+        Safely parse command-line arguments and return dataclass instances, including nested dataclasses.
+
+        Args:
+            args (Optional[list[str]]): Optional list of arguments to parse. If None, uses sys.argv.
+        Returns:
+            Result[dict[str, Any], str]:
+                - Ok[dict[str, Any]] with dict mapping dataclass names to their instantiated objects with parsed values,
+                - Err with error message if parsing fails.
+        """
+        try:
+            parsed_result = self.parse(args)
+            return Ok(parsed_result)
+        except Exception as e:
+            return Err(str(e))
+
     def _build_instance(
         self,
         cls: Type[Any],
@@ -574,6 +664,9 @@ class DataclassArgParser:
 
             # Type-specific handling
             value = self._handle_field_type(value, arg_type)
+
+            # Validate type (for config file values; CLI values are validated by argparse)
+            self._validate_type(value, arg_type, f"{prefix}.{field_name}")
 
             if value is dataclasses.MISSING:
                 missing_fields.append(f"--{arg_key}")
@@ -675,6 +768,114 @@ class DataclassArgParser:
             if isinstance(value, list):
                 value = [elem_type(**v) if isinstance(v, dict) else v for v in value]
         return value
+
+    def _validate_type(self, value: Any, arg_type: Any, field_name: str) -> None:
+        """
+        Validate that a value matches the expected type.
+
+        Raises TypeError or ValueError if the value doesn't match the expected type.
+
+        Args:
+            value: The value to validate.
+            arg_type: The expected type.
+            field_name: The name of the field (for error messages).
+
+        Raises:
+            TypeError: If the value is not of the expected type.
+            ValueError: If the value cannot be interpreted as the expected type.
+        """
+        if value is dataclasses.MISSING:
+            return
+
+        # Skip validation for nested dataclasses (they are handled separately)
+        if dataclasses.is_dataclass(arg_type) and not isinstance(arg_type, type):
+            return
+
+        # Handle basic types
+        if arg_type is int:
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise TypeError(
+                    f"Field '{field_name}' expects int, got {type(value).__name__}: {value!r}"
+                )
+        elif arg_type is float:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise TypeError(
+                    f"Field '{field_name}' expects float, got {type(value).__name__}: {value!r}"
+                )
+        elif arg_type is bool:
+            if not isinstance(value, bool):
+                raise TypeError(
+                    f"Field '{field_name}' expects bool, got {type(value).__name__}: {value!r}"
+                )
+        elif arg_type is str:
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"Field '{field_name}' expects str, got {type(value).__name__}: {value!r}"
+                )
+
+        # Handle List types
+        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+            list,
+            typing.List,
+        ):
+            if not isinstance(value, list):
+                raise TypeError(
+                    f"Field '{field_name}' expects list, got {type(value).__name__}: {value!r}"
+                )
+            if hasattr(arg_type, "__args__") and arg_type.__args__:
+                elem_type = arg_type.__args__[0]
+                # Skip if element type is a dataclass
+                if not dataclasses.is_dataclass(elem_type):
+                    for i, elem in enumerate(value):
+                        self._validate_type(elem, elem_type, f"{field_name}[{i}]")
+
+        # Handle Tuple types
+        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+            tuple,
+            typing.Tuple,
+        ):
+            if not isinstance(value, (list, tuple)):
+                raise TypeError(
+                    f"Field '{field_name}' expects tuple, got {type(value).__name__}: {value!r}"
+                )
+            if hasattr(arg_type, "__args__") and arg_type.__args__:
+                elem_types = arg_type.__args__
+                # Skip if all element types are dataclasses
+                if not all(dataclasses.is_dataclass(t) for t in elem_types):
+                    if len(value) != len(elem_types):
+                        raise ValueError(
+                            f"Field '{field_name}' expects tuple of length {len(elem_types)}, "
+                            f"got length {len(value)}"
+                        )
+                    for i, (elem, elem_type) in enumerate(zip(value, elem_types)):
+                        if not dataclasses.is_dataclass(elem_type):
+                            self._validate_type(elem, elem_type, f"{field_name}[{i}]")
+
+        # Handle Dict types
+        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
+            dict,
+            typing.Dict,
+        ):
+            if not isinstance(value, dict):
+                raise TypeError(
+                    f"Field '{field_name}' expects dict, got {type(value).__name__}: {value!r}"
+                )
+            if hasattr(arg_type, "__args__") and arg_type.__args__:
+                key_type = arg_type.__args__[0] if len(arg_type.__args__) >= 1 else str
+                value_type = (
+                    arg_type.__args__[1] if len(arg_type.__args__) >= 2 else str
+                )
+                for k, v in value.items():
+                    self._validate_type(k, key_type, f"{field_name} key '{k}'")
+                    self._validate_type(v, value_type, f"{field_name}['{k}']")
+
+        # Handle Literal types
+        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ is Literal:
+            choices = arg_type.__args__
+            if value not in choices:
+                raise ValueError(
+                    f"Field '{field_name}' expects one of {choices}, got {value!r}"
+                )
 
     def _merge_nested(
         self,
