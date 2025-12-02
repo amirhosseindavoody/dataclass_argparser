@@ -24,6 +24,21 @@ except ImportError:
     HAS_YAML = False
 
 
+def _get_optional_inner_type(type_hint: Any) -> Optional[Any]:
+    """
+    If type_hint is Optional[T] (i.e., Union[T, None]), return T.
+    Otherwise, return None.
+    """
+    origin = getattr(type_hint, "__origin__", None)
+    if origin is Union:
+        args = type_hint.__args__
+        # Optional[T] is Union[T, None], so we check for exactly two args with one being NoneType
+        non_none_args = [a for a in args if a is not type(None)]
+        if len(non_none_args) == 1 and type(None) in args:
+            return non_none_args[0]
+    return None
+
+
 def _strict_bool(value: str) -> bool:
     """
     Parse a string to a boolean value strictly.
@@ -479,6 +494,11 @@ class DataclassArgParser:
                 arg_type = field.type if field.type is not dataclasses.MISSING else str
                 description = field.metadata.get("help", "")
 
+                # Handle Optional[T] by extracting the inner type
+                inner_type = _get_optional_inner_type(arg_type)
+                if inner_type is not None:
+                    arg_type = inner_type
+
                 default_value = None
                 if field.default is not dataclasses.MISSING:
                     default_value = field.default
@@ -786,6 +806,14 @@ class DataclassArgParser:
         """
         if value is dataclasses.MISSING:
             return
+
+        # Handle Optional types: if value is None, it's valid for Optional
+        # Otherwise, validate against the inner type
+        inner_type = _get_optional_inner_type(arg_type)
+        if inner_type is not None:
+            if value is None:
+                return
+            arg_type = inner_type
 
         # Skip validation for nested dataclasses (they are handled separately)
         if dataclasses.is_dataclass(arg_type) and not isinstance(arg_type, type):
