@@ -52,7 +52,3 @@ gh release create "$TAG_NAME" \
 
 echo "Release $TAG_NAME created successfully!"
 echo "Tag 'latest' now points to $TAG_NAME"
-
-# Now create a local conda distribution
-echo "Creating local conda distribution..."
-pixi build . --format conda

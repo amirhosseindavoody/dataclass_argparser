@@ -79,5 +79,8 @@ else
     sed -i "/^\[package\]$/,/^\[.*\]$/{s/^version = \".*\"/version = \"$NEW_VERSION\"/;}" "$PIXI_FILE"
 fi
 
+# Install the latest version of the package to reflect changes in the pixi.lock file.
+pixi install
+
 echo "Updated pyproject.toml version to $NEW_VERSION"
 echo "Updated pixi.toml [package] version to $NEW_VERSION"
