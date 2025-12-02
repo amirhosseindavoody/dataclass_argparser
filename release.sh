@@ -52,3 +52,10 @@ gh release create "$TAG_NAME" \
 
 echo "Release $TAG_NAME created successfully!"
 echo "Tag 'latest' now points to $TAG_NAME"
+
+# Run local release script if it exists
+LOCAL_RELEASE_SCRIPT="$SCRIPT_DIR/release_local.sh"
+if [[ -f "$LOCAL_RELEASE_SCRIPT" ]]; then
+    echo "Running local release script..."
+    "$LOCAL_RELEASE_SCRIPT"
+fi
