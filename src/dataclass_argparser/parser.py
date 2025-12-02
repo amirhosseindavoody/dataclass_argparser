@@ -85,21 +85,80 @@ class DataclassArgParser:
         *dataclass_types: Type[Any],
         flags: Optional[list] = None,
         config_flag: Union[str, list[str], tuple[str, ...]] = "--config",
+        **dataclass_kwargs: Type[Any],
     ) -> None:
         """
         Initialize the DataclassArgParser with one or more dataclass types.
 
         Args:
             *dataclass_types: One or more dataclass types to generate arguments from.
+            flags: Optional list of custom flags to add to the parser.
+            config_flag: Custom config file flag option string(s). Default is "--config".
+            **dataclass_kwargs: Dataclass types passed as keyword arguments. The key will be used
+                                as the name in the result dictionary instead of the class name.
+        
+        Raises:
+            ValueError: If 'flags' is used as a dataclass keyword argument name.
+            ValueError: If 'config_flag' is used as a dataclass keyword argument name.
         """
-        self.dataclass_types: tuple[Type[Any], ...] = dataclass_types
+        # Validate that flags parameter is not a dataclass (common mistake)
+        # This check is necessary because when someone passes `flags=GlobalConfig`,
+        # it's interpreted as the flags parameter, not as a keyword argument in dataclass_kwargs.
+        if flags is not None and dataclasses.is_dataclass(flags):
+            raise ValueError(
+                "The keyword 'flags' is reserved for non-dataclass arguments and cannot be used as a dataclass argument name."
+            )
+        
+        # Validate that config_flag parameter is not a dataclass (common mistake)
+        # Similar to above, this catches the case where someone passes `config_flag=SomeDataclass`.
+        if dataclasses.is_dataclass(config_flag):
+            raise ValueError(
+                "The keyword 'config_flag' is reserved for specifying the flag for config files and cannot be used as a dataclass argument name."
+            )
+        
+        # Validate reserved keyword arguments
+        if "flags" in dataclass_kwargs:
+            raise ValueError(
+                "The keyword 'flags' is reserved for non-dataclass arguments and cannot be used as a dataclass argument name."
+            )
+        if "config_flag" in dataclass_kwargs:
+            raise ValueError(
+                "The keyword 'config_flag' is reserved for specifying the flag for config files and cannot be used as a dataclass argument name."
+            )
+        
+        # Check if 'config' is used as a dataclass keyword - if so, we'll disable default config assignment
+        self._disable_default_config = "config" in dataclass_kwargs
+        
+        # Combine positional and keyword dataclass types
+        # Store mapping from argument name to dataclass type
+        self._dataclass_name_map: dict[str, Type[Any]] = {}
+        
+        # Add positional dataclass types with their class name as key
+        for dc_type in dataclass_types:
+            if not dataclasses.is_dataclass(dc_type):
+                raise ValueError(f"{dc_type} is not a dataclass type")
+            self._dataclass_name_map[dc_type.__name__] = dc_type
+        
+        # Add keyword dataclass types with their keyword as key
+        for key, dc_type in dataclass_kwargs.items():
+            if not dataclasses.is_dataclass(dc_type):
+                raise ValueError(f"{dc_type} (passed as '{key}') is not a dataclass type")
+            self._dataclass_name_map[key] = dc_type
+        
+        # Keep the original tuple for backwards compatibility
+        self.dataclass_types: tuple[Type[Any], ...] = dataclass_types + tuple(dataclass_kwargs.values())
+        
         self.parser: argparse.ArgumentParser = argparse.ArgumentParser()
         # store the requested option string(s) for the config file flag so it
         # can be customized by the caller (default: "--config").
         self._requested_config_flag = config_flag
         # actual dest name for the config argument (populated when added)
-        self._config_dest: str = "config"
-        self._add_config_argument(self._requested_config_flag)
+        # If config is disabled (used as dataclass keyword), use a different dest to avoid conflicts
+        self._config_dest: str = "_disabled_config" if self._disable_default_config else "config"
+        
+        # Only add config argument if 'config' is not used as a dataclass keyword
+        if not self._disable_default_config:
+            self._add_config_argument(self._requested_config_flag)
 
         # Add any individual flags provided by the caller before dataclass args
         # Each item in `flags` may be one of:
@@ -597,8 +656,9 @@ class DataclassArgParser:
                     metavar=metavar,
                 )
 
-        for cls in self.dataclass_types:
-            add_fields(cls)
+        # Use the name map to add fields with correct prefixes
+        for name, cls in self._dataclass_name_map.items():
+            add_fields(cls, prefix=name)
 
     def parse(self, args: Optional[list[str]] = None) -> dict[str, Any]:
         """
@@ -608,7 +668,7 @@ class DataclassArgParser:
             args (Optional[list[str]]): Optional list of arguments to parse. If None, uses sys.argv.
 
         Returns:
-            dict[str, Any]: Dict mapping dataclass names to their instantiated objects with parsed values.
+            dict[str, Any]: Dict mapping dataclass names (or custom keys) to their instantiated objects with parsed values.
 
         Raises:
             SystemExit: If required fields (those without defaults) are not provided either as command-line arguments or in the config file.
@@ -617,19 +677,20 @@ class DataclassArgParser:
         parsed_args = vars(self.parser.parse_args(args))
 
         # Check if config file is provided (use recorded dest name to support custom flag)
+        # Only load config if config was not disabled (i.e., not used as a dataclass keyword)
         config_data = {}
-        if parsed_args.get(self._config_dest):
+        if not self._disable_default_config and parsed_args.get(self._config_dest):
             config_data = self._load_config_file(parsed_args[self._config_dest])
 
         result = {}
-        # Add dataclass instances
+        # Add dataclass instances using the name map
         dataclass_field_names = set()
-        for cls in self.dataclass_types:
-            instance = self._build_instance(cls, parsed_args, config_data)
-            result[cls.__name__] = instance
+        for name, cls in self._dataclass_name_map.items():
+            instance = self._build_instance(cls, parsed_args, config_data, prefix=name)
+            result[name] = instance
             # Collect all dataclass argument keys
             for field in dataclasses.fields(cls):
-                dataclass_field_names.add(f"{cls.__name__}.{field.name}")
+                dataclass_field_names.add(f"{name}.{field.name}")
 
         # Add custom flags (not associated with dataclass fields)
         for key, value in parsed_args.items():
@@ -670,7 +731,8 @@ class DataclassArgParser:
         Handles required fields and nested dataclasses.
         """
         prefix = prefix or cls.__name__
-        config_section = config_section or config_data.get(cls.__name__, {})
+        # Use prefix to look up config data (supports custom names from keyword args)
+        config_section = config_section or config_data.get(prefix, {})
         values = {}
         missing_fields = []
         for field in dataclasses.fields(cls):
