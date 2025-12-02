@@ -13,8 +13,9 @@ import dataclasses
 import json
 import os
 import typing
-from typing import Any, Literal, Type, Union, Optional
-from result import Result, Ok, Err
+from typing import Any, Literal, Optional, Type, Union, cast
+
+from result import Err, Ok, Result
 
 try:
     import yaml
@@ -481,124 +482,170 @@ class DataclassArgParser:
 
         return parse_dict
 
+    def _get_field_default(self, field: dataclasses.Field) -> Any:
+        """Extract the default value from a dataclass field."""
+        if field.default is not dataclasses.MISSING:
+            return field.default
+        elif field.default_factory is not dataclasses.MISSING:
+            return field.default_factory()
+        return None
+
+    def _format_description(self, description: str, default_value: Any) -> str:
+        """Append default value info to the field description."""
+        if default_value is None:
+            return description
+        default_suffix = f"(default: {default_value})"
+        return f"{description} {default_suffix}" if description else default_suffix
+
+    def _get_basic_type_info(self, arg_type: Any) -> tuple[str, Any]:
+        """
+        Get metavar and parser type for basic types (int, float, str, bool).
+
+        Returns:
+            Tuple of (metavar, parser_type) for the given type.
+        """
+        basic_types = {
+            int: ("INT", int),
+            float: ("FLOAT", float),
+            str: ("STRING", str),
+            bool: ("BOOL", _strict_bool),
+        }
+
+        if arg_type in basic_types:
+            return basic_types[arg_type]
+
+        # Fallback for unknown types
+        if hasattr(arg_type, "__name__"):
+            metavar = arg_type.__name__.upper()
+        else:
+            metavar = str(arg_type).upper()
+        return (metavar, arg_type)
+
     def _add_dataclass_arguments(self) -> None:
         """
         Add arguments to the parser based on dataclass fields, including nested dataclasses.
         Handles Literal, tuple, list, dict, and nested dataclass types.
         """
-
-        def add_fields(cls, prefix=None):
-            prefix = prefix or cls.__name__
-            for field in dataclasses.fields(cls):
-                arg_name = f"--{prefix}.{field.name}"
-                arg_type = field.type if field.type is not dataclasses.MISSING else str
-                description = field.metadata.get("help", "")
-
-                # Handle Optional[T] by extracting the inner type
-                inner_type = _get_optional_inner_type(arg_type)
-                if inner_type is not None:
-                    arg_type = inner_type
-
-                default_value = None
-                if field.default is not dataclasses.MISSING:
-                    default_value = field.default
-                elif field.default_factory is not dataclasses.MISSING:
-                    default_value = field.default_factory()
-
-                if default_value is not None:
-                    if description:
-                        description = f"{description} (default: {default_value})"
-                    else:
-                        description = f"(default: {default_value})"
-
-                # Nested dataclass support
-                if dataclasses.is_dataclass(arg_type) and not isinstance(
-                    default_value, type
-                ):
-                    add_fields(arg_type, prefix=f"{prefix}.{field.name}")
-                    continue
-
-                # Literal
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ is Literal:
-                    choices = arg_type.__args__
-                    metavar = "{" + ",".join(str(choice) for choice in choices) + "}"
-                    self.parser.add_argument(
-                        arg_name,
-                        type=str,
-                        choices=choices,
-                        help=description,
-                        metavar=metavar,
-                    )
-                    continue
-
-                # Tuple
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    tuple,
-                    typing.Tuple,
-                ):
-                    metavar = "TUPLE"
-                    self.parser.add_argument(
-                        arg_name,
-                        type=self._tuple_type_factory(arg_type),
-                        help=description,
-                        metavar=metavar,
-                    )
-                    continue
-
-                # List
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    list,
-                    typing.List,
-                ):
-                    metavar = "LIST"
-                    self.parser.add_argument(
-                        arg_name,
-                        type=self._list_type_factory(arg_type),
-                        help=description,
-                        metavar=metavar,
-                    )
-                    continue
-
-                # Dict
-                if hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-                    dict,
-                    typing.Dict,
-                ):
-                    metavar = "DICT"
-                    self.parser.add_argument(
-                        arg_name,
-                        type=self._dict_type_factory(arg_type),
-                        help=description,
-                        metavar=metavar,
-                    )
-                    continue
-
-                # Basic types
-                if arg_type is int:
-                    metavar = "INT"
-                    parser_type = int
-                elif arg_type is float:
-                    metavar = "FLOAT"
-                    parser_type = float
-                elif arg_type is str:
-                    metavar = "STRING"
-                    parser_type = str
-                elif arg_type is bool:
-                    metavar = "BOOL"
-                    parser_type = _strict_bool
-                else:
-                    metavar = arg_type.__name__.upper()
-                    parser_type = arg_type
-
-                self.parser.add_argument(
-                    arg_name,
-                    type=parser_type,
-                    help=description,
-                    metavar=metavar,
-                )
-
         for cls in self.dataclass_types:
-            add_fields(cls)
+            self._add_fields_for_class(cls)
+
+    def _add_fields_for_class(
+        self, cls: Type[Any], prefix: Optional[str] = None
+    ) -> None:
+        """
+        Recursively add CLI arguments for all fields in a dataclass.
+
+        Args:
+            cls: The dataclass type to process.
+            prefix: The argument prefix (e.g., "ClassName" or "ClassName.nested").
+        """
+        prefix = prefix or cls.__name__
+
+        for field in dataclasses.fields(cls):
+            self._add_field_argument(field, prefix)
+
+    def _add_field_argument(self, field: dataclasses.Field, prefix: str) -> None:
+        """
+        Add a CLI argument for a single dataclass field.
+
+        Args:
+            field: The dataclass field to process.
+            prefix: The argument prefix for this field.
+        """
+        arg_name = f"--{prefix}.{field.name}"
+        arg_type = field.type if field.type is not dataclasses.MISSING else str
+
+        # Handle Optional[T] by extracting the inner type
+        inner_type = _get_optional_inner_type(arg_type)
+        if inner_type is not None:
+            arg_type = inner_type
+
+        default_value = self._get_field_default(field)
+        description = self._format_description(
+            field.metadata.get("help", ""), default_value
+        )
+
+        # Handle nested dataclass (recurse)
+        if self._is_nested_dataclass(arg_type, default_value):
+            self._add_fields_for_class(
+                cast(Type[Any], arg_type), prefix=f"{prefix}.{field.name}"
+            )
+            return
+
+        # Handle generic types (Literal, Tuple, List, Dict)
+        if self._try_add_generic_type_argument(arg_name, arg_type, description):
+            return
+
+        # Handle basic types (int, float, str, bool, etc.)
+        metavar, parser_type = self._get_basic_type_info(arg_type)
+        self.parser.add_argument(
+            arg_name,
+            type=parser_type,
+            help=description,
+            metavar=metavar,
+        )
+
+    def _is_nested_dataclass(self, arg_type: Any, default_value: Any) -> bool:
+        """Check if a type represents a nested dataclass that should be recursed into."""
+        return dataclasses.is_dataclass(arg_type) and not isinstance(
+            default_value, type
+        )
+
+    def _try_add_generic_type_argument(
+        self, arg_name: str, arg_type: Any, description: str
+    ) -> bool:
+        """
+        Try to add an argument for generic types (Literal, Tuple, List, Dict).
+
+        Returns:
+            True if the type was handled, False otherwise.
+        """
+        type_origin = getattr(arg_type, "__origin__", None)
+
+        # Literal type
+        if type_origin is Literal:
+            choices = getattr(arg_type, "__args__", ())
+            metavar = "{" + ",".join(str(choice) for choice in choices) + "}"
+            self.parser.add_argument(
+                arg_name,
+                type=str,
+                choices=choices,
+                help=description,
+                metavar=metavar,
+            )
+            return True
+
+        # Tuple type
+        if type_origin in (tuple, typing.Tuple):
+            self.parser.add_argument(
+                arg_name,
+                type=self._tuple_type_factory(arg_type),
+                help=description,
+                metavar="TUPLE",
+            )
+            return True
+
+        # List type
+        if type_origin in (list, typing.List):
+            self.parser.add_argument(
+                arg_name,
+                type=self._list_type_factory(arg_type),
+                help=description,
+                metavar="LIST",
+            )
+            return True
+
+        # Dict type
+        if type_origin in (dict, typing.Dict):
+            self.parser.add_argument(
+                arg_name,
+                type=self._dict_type_factory(arg_type),
+                help=description,
+                metavar="DICT",
+            )
+            return True
+
+        return False
 
     def parse(self, args: Optional[list[str]] = None) -> dict[str, Any]:
         """
@@ -763,13 +810,10 @@ class DataclassArgParser:
         """
         Handle type-specific conversion for lists and tuples of dataclasses.
         """
+        origin = getattr(arg_type, "__origin__", None)
         # Handle tuple of dataclasses
-        if (
-            hasattr(arg_type, "__origin__")
-            and arg_type.__origin__ in (tuple, typing.Tuple)
-            and all(
-                dataclasses.is_dataclass(t) for t in getattr(arg_type, "__args__", [])
-            )
+        if origin in (tuple, typing.Tuple) and all(
+            dataclasses.is_dataclass(t) for t in getattr(arg_type, "__args__", [])
         ):
             elem_types = arg_type.__args__
             if isinstance(value, list) and len(value) == len(elem_types):
@@ -779,8 +823,7 @@ class DataclassArgParser:
                 )
         # Handle list of dataclasses
         elif (
-            hasattr(arg_type, "__origin__")
-            and arg_type.__origin__ in (list, typing.List)
+            origin in (list, typing.List)
             and len(getattr(arg_type, "__args__", [])) == 1
             and dataclasses.is_dataclass(arg_type.__args__[0])
         ):
@@ -842,10 +885,8 @@ class DataclassArgParser:
                 )
 
         # Handle List types
-        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-            list,
-            typing.List,
-        ):
+        origin = getattr(arg_type, "__origin__", None)
+        if origin in (list, typing.List):
             if not isinstance(value, list):
                 raise TypeError(
                     f"Field '{field_name}' expects list, got {type(value).__name__}: {value!r}"
@@ -858,10 +899,7 @@ class DataclassArgParser:
                         self._validate_type(elem, elem_type, f"{field_name}[{i}]")
 
         # Handle Tuple types
-        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-            tuple,
-            typing.Tuple,
-        ):
+        elif origin in (tuple, typing.Tuple):
             if not isinstance(value, (list, tuple)):
                 raise TypeError(
                     f"Field '{field_name}' expects tuple, got {type(value).__name__}: {value!r}"
@@ -880,10 +918,7 @@ class DataclassArgParser:
                             self._validate_type(elem, elem_type, f"{field_name}[{i}]")
 
         # Handle Dict types
-        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ in (
-            dict,
-            typing.Dict,
-        ):
+        elif origin in (dict, typing.Dict):
             if not isinstance(value, dict):
                 raise TypeError(
                     f"Field '{field_name}' expects dict, got {type(value).__name__}: {value!r}"
@@ -898,8 +933,8 @@ class DataclassArgParser:
                     self._validate_type(v, value_type, f"{field_name}['{k}']")
 
         # Handle Literal types
-        elif hasattr(arg_type, "__origin__") and arg_type.__origin__ is Literal:
-            choices = arg_type.__args__
+        elif origin is Literal:
+            choices = getattr(arg_type, "__args__", ())
             if value not in choices:
                 raise ValueError(
                     f"Field '{field_name}' expects one of {choices}, got {value!r}"
@@ -926,7 +961,7 @@ class DataclassArgParser:
             # Nested CLI (for deeper nesting)
             elif any(key.startswith(f"{k_cli}.") for key in parsed_args):
                 vals[f.name] = self._merge_nested(
-                    f.type,
+                    cast(Type[Any], f.type),
                     k_cli,
                     config_nested.get(f.name, {}),
                     parsed_args,

@@ -1,14 +1,20 @@
 {
     "folders": [
         {
-            "path": ".."
+            "name": "root",
+            "path": "../"
         }
     ],
     "settings": {
-        "python.defaultInterpreterPath": ".pixi/envs/default/bin/python",
+        "python.defaultInterpreterPath": "${workspaceFolder}/.pixi/envs/default/bin/python",
         "python.analysis.exclude": [
-            "**/.pixi/**"
+            ".pixi"
         ],
+        "python.pyrefly.displayTypeErrors": "force-on",
+        // "python.pyrefly.disabledLanguageServices": {
+        //     "rename": true,
+        // },
+        "python.pyrefly.disableLanguageServices": true,
         "ruff.interpreter": [
             "${workspaceFolder}/.pixi/envs/default/bin/python"
         ],

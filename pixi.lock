@@ -708,7 +708,7 @@ packages:
   - pyyaml >=6.0.2,<7
   license: MIT
   input:
-    hash: cd076cbc5ba1e19807c63f41bb1fd49c6b0d8fa377f92773508de9c55cd135d0
+    hash: 6189264d4dfe81a04dcf49f873e08b3a27c98f9ec2d42ca515eba84fd46f8144
     globs:
     - pyproject.toml
 - conda: https://prefix.dev/conda-forge/linux-64/dbus-1.16.2-h3c4dab8_0.conda
