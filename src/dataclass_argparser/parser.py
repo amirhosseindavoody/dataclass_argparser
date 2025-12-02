@@ -235,7 +235,7 @@ class DataclassArgParser:
             Callable[[str], tuple]: A function that parses a string into a tuple.
         """
 
-        def parse_tuple(s):
+        def parse_tuple(s: str) -> tuple:
             try:
                 if s.startswith("(") and s.endswith(")"):
                     s = s[1:-1]
@@ -279,7 +279,7 @@ class DataclassArgParser:
             Callable[[str], list]: A function that parses a string into a list.
         """
 
-        def parse_list(s):
+        def parse_list(s: str) -> list:
             try:
                 if s.startswith("[") and s.endswith("]"):
                     s = s[1:-1]
@@ -320,7 +320,7 @@ class DataclassArgParser:
             Callable[[str], dict]: A function that parses a string into a dict.
         """
 
-        def parse_dict(s):
+        def parse_dict(s: str) -> dict:
             try:
                 # Handle empty string as empty dict
                 if not s.strip():
@@ -487,7 +487,7 @@ class DataclassArgParser:
         Handles Literal, tuple, list, dict, and nested dataclass types.
         """
 
-        def add_fields(cls, prefix=None):
+        def add_fields(cls: Type[Any], prefix: Optional[str] = None) -> None:
             prefix = prefix or cls.__name__
             for field in dataclasses.fields(cls):
                 arg_name = f"--{prefix}.{field.name}"
@@ -742,7 +742,7 @@ class DataclassArgParser:
                 for key in parsed_args
             )
 
-            def config_has_override(cfg):
+            def config_has_override(cfg: Any) -> bool:
                 if isinstance(cfg, dict):
                     if cfg:
                         return True

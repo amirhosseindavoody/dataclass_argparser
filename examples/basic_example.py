@@ -42,7 +42,7 @@ class ProcessConfig:
     timeout: float = field(default=300.0, metadata={"help": "Timeout in seconds"})
 
 
-def main():
+def main() -> None:
     """Main function demonstrating the parser."""
     parser = DataclassArgParser(SimulationConfig, ProcessConfig)
 
