@@ -200,3 +200,7 @@ Thumbs.db
 output/
 logs/
 temp_data/
+
+release_local.sh
+
+*.conda

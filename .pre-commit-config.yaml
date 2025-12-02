@@ -1,0 +1,33 @@
+# Pre-commit hook configuration
+# Install with: pip install pre-commit && pre-commit install --hook-type pre-push
+# Or with pixi: pixi add pre-commit && pixi run pre-commit install --hook-type pre-push && pixi run pre-commit install
+
+repos:
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: update-version
+        name: Update version to current date
+        entry: ./scripts/update_version.sh
+        language: script
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: run-tests
+        name: Run all tests
+        entry: pixi run test-all
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+
+  # Optional: standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files

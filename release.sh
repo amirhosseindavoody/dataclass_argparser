@@ -2,8 +2,13 @@
 
 set -euo pipefail
 
-# Generate tag name with today's date (format: v2025.11.05)
-TAG_NAME="v$(date +%Y.%m.%d)"
+# Get the project root directory (where this script is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYPROJECT_FILE="$SCRIPT_DIR/pyproject.toml"
+
+# Get the new version for tagging
+NEW_VERSION=$(grep '^version = ' "$PYPROJECT_FILE" | sed 's/version = "\(.*\)"/\1/')
+TAG_NAME="v$NEW_VERSION"
 
 echo "Creating release tag: $TAG_NAME"
 
@@ -40,3 +45,7 @@ gh release create "$TAG_NAME" \
 
 echo "Release $TAG_NAME created successfully!"
 echo "Tag 'latest' now points to $TAG_NAME"
+
+# Now create a local conda distribution
+echo "Creating local conda distribution..."
+pixi build . --format conda
