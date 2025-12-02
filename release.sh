@@ -6,9 +6,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYPROJECT_FILE="$SCRIPT_DIR/pyproject.toml"
 
+# Update version using shared script
+"$SCRIPT_DIR/scripts/update_version.sh"
+
 # Get the new version for tagging
 NEW_VERSION=$(grep '^version = ' "$PYPROJECT_FILE" | sed 's/version = "\(.*\)"/\1/')
 TAG_NAME="v$NEW_VERSION"
+
+# Commit the version change
+git add "$PYPROJECT_FILE" "$SCRIPT_DIR/pixi.toml"
+git commit -m "Bump version to $NEW_VERSION" || echo "No changes to commit (version already up to date)"
 
 echo "Creating release tag: $TAG_NAME"
 

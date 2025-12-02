@@ -748,7 +748,7 @@ packages:
   timestamp: 1760605122244
 - conda: .
   name: dataclass-argparser
-  version: 2025.12.2.5
+  version: 2025.12.2.6
   build: pyh4616a5c_0
   subdir: noarch
   depends:
@@ -757,7 +757,7 @@ packages:
   - pyyaml >=6.0.2,<7
   license: MIT
   input:
-    hash: 59d8de0ce3d532bd8ecdb3ed2391fce67edb6b985b66de8e317df9571784dccf
+    hash: feea494368008c6715fd2105c3f42d53e79052d2cbd1715081f90a30b607526b
     globs:
     - pyproject.toml
 - conda: https://prefix.dev/conda-forge/linux-64/dbus-1.16.2-h3c4dab8_0.conda
