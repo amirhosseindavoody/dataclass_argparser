@@ -4,6 +4,8 @@ environments:
     channels:
     - url: https://prefix.dev/conda-forge/
     - url: https://conda.anaconda.org/conda-forge/
+    options:
+      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://prefix.dev/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -748,18 +750,16 @@ packages:
   timestamp: 1760605122244
 - conda: .
   name: dataclass-argparser
-  version: 2025.12.2.12
+  version: 2025.12.30.0
   build: pyh4616a5c_0
   subdir: noarch
+  variants:
+    target_platform: noarch
   depends:
   - python >=3.7
   - python *
   - pyyaml >=6.0.2,<7
   license: MIT
-  input:
-    hash: b91e2b66d567a1b16db4f3d212148c5b59006fc4abff820d97cb92e74a8e2461
-    globs:
-    - pyproject.toml
 - conda: https://prefix.dev/conda-forge/linux-64/dbus-1.16.2-h3c4dab8_0.conda
   sha256: 3b988146a50e165f0fa4e839545c679af88e4782ec284cc7b6d07dd226d6a068
   md5: 679616eb5ad4e521c83da4650860aba7
