@@ -10,16 +10,17 @@
         "python.analysis.exclude": [
             ".pixi"
         ],
-        "python.pyrefly.displayTypeErrors": "force-on",
-        // "python.pyrefly.disabledLanguageServices": {
-        //     "rename": true,
-        // },
-        "python.pyrefly.disableLanguageServices": true,
         "ruff.interpreter": [
             "${workspaceFolder}/.pixi/envs/default/bin/python"
         ],
         "explorer.autoRevealExclude": {
             ".pixi": true
         },
+        // TY settings
+        "python.languageServer": "None",
+        "ty.importStrategy": "useBundled",
+        "ty.disableLanguageServices": false,
+        "ty.inlayHints.variableTypes": false,
+        "ty.inlayHints.callArgumentNames": false,
     }
 }

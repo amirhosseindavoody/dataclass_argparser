@@ -817,10 +817,19 @@ class DataclassArgParser:
         ):
             elem_types = arg_type.__args__
             if isinstance(value, list) and len(value) == len(elem_types):
-                value = tuple(
-                    t(**v) if isinstance(v, dict) else v
-                    for t, v in zip(elem_types, value)
-                )
+                elems = []
+                for t, v in zip(elem_types, value):
+                    if isinstance(v, dict):
+                        instantiated = t(**v)
+                        # Recursively handle nested fields inside the created dataclass
+                        for sf in dataclasses.fields(t):
+                            sub_val = getattr(instantiated, sf.name)
+                            new_sub_val = self._handle_field_type(sub_val, sf.type)
+                            setattr(instantiated, sf.name, new_sub_val)
+                        elems.append(instantiated)
+                    else:
+                        elems.append(v)
+                value = tuple(elems)
         # Handle list of dataclasses
         elif (
             origin in (list, typing.List)
@@ -829,7 +838,19 @@ class DataclassArgParser:
         ):
             elem_type = arg_type.__args__[0]
             if isinstance(value, list):
-                value = [elem_type(**v) if isinstance(v, dict) else v for v in value]
+                new_list = []
+                for v in value:
+                    if isinstance(v, dict):
+                        instantiated = elem_type(**v)
+                        # Recursively handle nested fields inside the created dataclass
+                        for sf in dataclasses.fields(elem_type):
+                            sub_val = getattr(instantiated, sf.name)
+                            new_sub_val = self._handle_field_type(sub_val, sf.type)
+                            setattr(instantiated, sf.name, new_sub_val)
+                        new_list.append(instantiated)
+                    else:
+                        new_list.append(v)
+                value = new_list
         return value
 
     def _validate_type(self, value: Any, arg_type: Any, field_name: str) -> None:

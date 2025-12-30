@@ -277,3 +277,52 @@ def test_tuple_of_dataclasses_from_config(tmp_path):
     assert cfg.pair[1].x == 20
     assert cfg.pair[1].y == "b"
     assert cfg.z == 9.99
+
+
+@dataclasses.dataclass
+class OuterLevelOne:
+    type: str
+    inner: list[Inner]
+
+
+@dataclasses.dataclass
+class OuterLevelTwo:
+    inner_lvl_ones: list[OuterLevelOne]
+
+
+def test_outer_level_two_from_config(tmp_path):
+    config = {
+        "OuterLevelTwo": {
+            "inner_lvl_ones": [
+                {"type": "t1", "inner": [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}]},
+                {"type": "t2", "inner": [{"x": 3, "y": "c"}]},
+            ]
+        }
+    }
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    parser = DataclassArgParser(OuterLevelTwo)
+    result = parser.parse(["--config", str(config_path)])
+    cfg = result["OuterLevelTwo"]
+
+    assert isinstance(cfg, OuterLevelTwo)
+    assert isinstance(cfg.inner_lvl_ones, list)
+    assert len(cfg.inner_lvl_ones) == 2
+
+    first = cfg.inner_lvl_ones[0]
+    assert isinstance(first, OuterLevelOne)
+    assert first.type == "t1"
+    assert isinstance(first.inner, list)
+    assert len(first.inner) == 2
+    assert first.inner[0].x == 1
+    assert first.inner[0].y == "a"
+    assert first.inner[1].x == 2
+    assert first.inner[1].y == "b"
+
+    second = cfg.inner_lvl_ones[1]
+    assert isinstance(second, OuterLevelOne)
+    assert second.type == "t2"
+    assert len(second.inner) == 1
+    assert second.inner[0].x == 3
+    assert second.inner[0].y == "c"
