@@ -56,7 +56,7 @@ version = "2025.12.30.0"
 
 [package.build.backend]
 name = "pixi-build-python"
-version = "==0.4.0"
+version = ">=0.4.0"
 
 [package.build-dependencies]
 pytest = ">=8.4.1,<9"

@@ -777,7 +777,13 @@ class DataclassArgParser:
             value = parsed_args[arg_key]
 
         # 4. Nested dataclass: check for overrides
-        if dataclasses.is_dataclass(arg_type):
+        # Handle Optional[DataClass] by extracting the inner type
+        actual_type = arg_type
+        inner_type = _get_optional_inner_type(arg_type)
+        if inner_type is not None:
+            actual_type = inner_type
+
+        if dataclasses.is_dataclass(actual_type):
             nested_config = (
                 config_section.get(field.name, {})
                 if isinstance(config_section, dict)
@@ -802,15 +808,34 @@ class DataclassArgParser:
                 has_override = config_has_override(nested_config)
             if has_override:
                 value = self._merge_nested(
-                    arg_type, arg_key, nested_config, parsed_args, config_data
+                    actual_type, arg_key, nested_config, parsed_args, config_data
                 )
         return value
 
     def _handle_field_type(self, value: Any, arg_type: Any) -> Any:
         """
-        Handle type-specific conversion for lists and tuples of dataclasses.
+        Handle type-specific conversion for lists and tuples of dataclasses,
+        as well as Optional[DataClass].
         """
+        # Handle None values early - no conversion needed
+        if value is None:
+            return value
+
         origin = getattr(arg_type, "__origin__", None)
+
+        # Handle Optional[DataClass] - convert dict to dataclass instance
+        inner_type = _get_optional_inner_type(arg_type)
+        if inner_type is not None and dataclasses.is_dataclass(inner_type):
+            if isinstance(value, dict):
+                instantiated = inner_type(**value)
+                # Recursively handle nested fields inside the created dataclass
+                for sf in dataclasses.fields(inner_type):
+                    sub_val = getattr(instantiated, sf.name)
+                    new_sub_val = self._handle_field_type(sub_val, sf.type)
+                    setattr(instantiated, sf.name, new_sub_val)
+                return instantiated
+            return value
+
         # Handle tuple of dataclasses
         if origin in (tuple, typing.Tuple) and all(
             dataclasses.is_dataclass(t) for t in getattr(arg_type, "__args__", [])

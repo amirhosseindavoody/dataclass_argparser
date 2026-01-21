@@ -257,3 +257,164 @@ class TestOptionalDictTypes:
         config = result["OptionalDictConfig"]
 
         assert config.optional_dict == {"a": 1, "b": 2}
+
+
+# Define dataclasses at module level to avoid ForwardRef issues
+@dataclass
+class InnerConfig:
+    """Inner configuration dataclass."""
+
+    path: str = field(metadata={"help": "Path to a file"})
+    timeout: int = field(default=30, metadata={"help": "Timeout in seconds"})
+
+
+@dataclass
+class SecondInnerConfig:
+    """Second inner configuration dataclass."""
+
+    host: str = field(metadata={"help": "Hostname"})
+    port: int = field(default=8080, metadata={"help": "Port number"})
+
+
+@dataclass
+class OuterWithOptionalDataclass:
+    """Outer configuration with Optional nested dataclass fields."""
+
+    name: str = field(default="test", metadata={"help": "Name of the config"})
+    inner: Optional[InnerConfig] = field(
+        default=None, metadata={"help": "Optional inner configuration"}
+    )
+    second_inner: Optional[SecondInnerConfig] = field(
+        default=None, metadata={"help": "Optional second inner configuration"}
+    )
+
+
+class TestOptionalDataclassTypesImpl:
+    """Test suite implementation for Optional nested dataclass types."""
+
+    def test_optional_dataclass_default_none(self):
+        """Test that Optional[DataClass] defaults to None when not provided."""
+        parser = DataclassArgParser(OuterWithOptionalDataclass)
+        result = parser.parse([])
+        config = result["OuterWithOptionalDataclass"]
+
+        assert config.name == "test"
+        assert config.inner is None
+        assert config.second_inner is None
+
+    def test_optional_dataclass_from_config_file(self):
+        """Test that Optional[DataClass] is properly instantiated from config file.
+
+        This is the main regression test: previously, the value would be returned
+        as a dict instead of being converted to a dataclass instance.
+        """
+        config_data = {
+            "OuterWithOptionalDataclass": {
+                "name": "from_config",
+                "inner": {"path": "/tmp/test", "timeout": 60},
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(OuterWithOptionalDataclass)
+            result = parser.parse(["--config", config_path])
+            config = result["OuterWithOptionalDataclass"]
+
+            assert config.name == "from_config"
+            # This is the key assertion: inner should be an instance, not a dict
+            assert config.inner is not None
+            assert isinstance(config.inner, InnerConfig), (
+                f"Expected InnerConfig instance, got {type(config.inner)}"
+            )
+            assert config.inner.path == "/tmp/test"
+            assert config.inner.timeout == 60
+            # Second inner should still be None
+            assert config.second_inner is None
+        finally:
+            os.unlink(config_path)
+
+    def test_optional_dataclass_multiple_from_config_file(self):
+        """Test that multiple Optional[DataClass] fields are properly instantiated."""
+        config_data = {
+            "OuterWithOptionalDataclass": {
+                "name": "multi_config",
+                "inner": {"path": "/tmp/first", "timeout": 10},
+                "second_inner": {"host": "localhost", "port": 9000},
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(OuterWithOptionalDataclass)
+            result = parser.parse(["--config", config_path])
+            config = result["OuterWithOptionalDataclass"]
+
+            assert config.name == "multi_config"
+            assert isinstance(config.inner, InnerConfig)
+            assert config.inner.path == "/tmp/first"
+            assert config.inner.timeout == 10
+            assert isinstance(config.second_inner, SecondInnerConfig)
+            assert config.second_inner.host == "localhost"
+            assert config.second_inner.port == 9000
+        finally:
+            os.unlink(config_path)
+
+    def test_optional_dataclass_null_in_config_file(self):
+        """Test that null/None in config file keeps Optional[DataClass] as None."""
+        config_data = {
+            "OuterWithOptionalDataclass": {
+                "name": "null_test",
+                "inner": None,
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(OuterWithOptionalDataclass)
+            result = parser.parse(["--config", config_path])
+            config = result["OuterWithOptionalDataclass"]
+
+            assert config.name == "null_test"
+            assert config.inner is None
+        finally:
+            os.unlink(config_path)
+
+    def test_optional_dataclass_cli_override(self):
+        """Test that CLI arguments can override Optional[DataClass] fields."""
+        config_data = {
+            "OuterWithOptionalDataclass": {
+                "inner": {"path": "/config/path", "timeout": 10},
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(OuterWithOptionalDataclass)
+            result = parser.parse(
+                [
+                    "--config",
+                    config_path,
+                    "--OuterWithOptionalDataclass.inner.path",
+                    "/cli/path",
+                ]
+            )
+            config = result["OuterWithOptionalDataclass"]
+
+            assert isinstance(config.inner, InnerConfig)
+            assert config.inner.path == "/cli/path"  # Overridden by CLI
+            assert config.inner.timeout == 10  # From config
+        finally:
+            os.unlink(config_path)
