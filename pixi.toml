@@ -52,7 +52,7 @@ python examples/override_example.py --config examples/example_config.json
 [package]
 description = "A utility for creating command-line argument parsers from dataclasses"
 name = "dataclass-argparser"
-version = "2026.1.21.0"
+version = "2026.1.21.1"
 
 [package.build.backend]
 name = "pixi-build-python"

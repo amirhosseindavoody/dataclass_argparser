@@ -750,7 +750,7 @@ packages:
   timestamp: 1760605122244
 - conda: .
   name: dataclass-argparser
-  version: 2026.1.21.0
+  version: 2026.1.21.1
   build: pyh4616a5c_0
   subdir: noarch
   variants:
