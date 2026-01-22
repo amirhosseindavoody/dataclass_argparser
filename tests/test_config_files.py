@@ -36,6 +36,18 @@ class SecondConfig:
     enabled: bool = field(default=True, metadata={"help": "Enable feature"})
 
 
+@dataclass
+class TupleFieldConfig:
+    """Configuration with tuple fields for testing config file parsing."""
+
+    coords: tuple[int, int, int] = field(
+        default=(0, 0, 0), metadata={"help": "Coordinates"}
+    )
+    pair: tuple[str, float] = field(
+        default=("default", 1.0), metadata={"help": "String and float pair"}
+    )
+
+
 class TestConfigFiles:
     """Test suite for config file functionality."""
 
@@ -126,6 +138,92 @@ class TestConfigFiles:
             assert sample_config.name == "cmdline_name"  # overridden by cmdline
             assert sample_config.count == 99  # from config file
             assert sample_config.threshold == 0.9  # from cmdline
+        finally:
+            os.unlink(config_path)
+
+    def test_tuple_from_json_config(self):
+        """Test that tuples in JSON config (represented as lists) are parsed correctly."""
+        config_data = {
+            "TupleFieldConfig": {
+                "coords": [1, 2, 3],
+                "pair": ["hello", 2.5],
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(TupleFieldConfig)
+            result = parser.parse(["--config", config_path])
+
+            cfg = result["TupleFieldConfig"]
+            assert cfg.coords == (1, 2, 3)
+            assert isinstance(cfg.coords, tuple)
+            assert cfg.pair == ("hello", 2.5)
+            assert isinstance(cfg.pair, tuple)
+        finally:
+            os.unlink(config_path)
+
+    def test_tuple_from_yaml_config(self):
+        """Test that tuples in YAML config (represented as lists) are parsed correctly."""
+        config_content = textwrap.dedent("""
+            TupleFieldConfig:
+              coords:
+                - 10
+                - 20
+                - 30
+              pair:
+                - world
+                - 3.14
+            """).strip()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(config_content)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(TupleFieldConfig)
+            result = parser.parse(["--config", config_path])
+
+            cfg = result["TupleFieldConfig"]
+            assert cfg.coords == (10, 20, 30)
+            assert isinstance(cfg.coords, tuple)
+            assert cfg.pair == ("world", 3.14)
+            assert isinstance(cfg.pair, tuple)
+        finally:
+            os.unlink(config_path)
+
+    def test_tuple_config_with_cli_override(self):
+        """Test that CLI overrides work correctly for tuple fields loaded from config."""
+        config_data = {
+            "TupleFieldConfig": {
+                "coords": [1, 2, 3],
+                "pair": ["hello", 2.5],
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            parser = DataclassArgParser(TupleFieldConfig)
+            result = parser.parse(
+                [
+                    "--config",
+                    config_path,
+                    "--TupleFieldConfig.coords",
+                    "100,200,300",
+                ]
+            )
+
+            cfg = result["TupleFieldConfig"]
+            assert cfg.coords == (100, 200, 300)  # overridden by CLI
+            assert isinstance(cfg.coords, tuple)
+            assert cfg.pair == ("hello", 2.5)  # from config
+            assert isinstance(cfg.pair, tuple)
         finally:
             os.unlink(config_path)
 

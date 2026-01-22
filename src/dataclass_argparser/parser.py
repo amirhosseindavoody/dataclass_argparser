@@ -815,7 +815,8 @@ class DataclassArgParser:
     def _handle_field_type(self, value: Any, arg_type: Any) -> Any:
         """
         Handle type-specific conversion for lists and tuples of dataclasses,
-        as well as Optional[DataClass].
+        as well as Optional[DataClass]. Also converts lists to tuples when the
+        field type is tuple (since YAML/JSON don't have native tuple types).
         """
         # Handle None values early - no conversion needed
         if value is None:
@@ -836,25 +837,43 @@ class DataclassArgParser:
                 return instantiated
             return value
 
-        # Handle tuple of dataclasses
-        if origin in (tuple, typing.Tuple) and all(
-            dataclasses.is_dataclass(t) for t in getattr(arg_type, "__args__", [])
-        ):
-            elem_types = arg_type.__args__
-            if isinstance(value, list) and len(value) == len(elem_types):
-                elems = []
-                for t, v in zip(elem_types, value):
-                    if isinstance(v, dict):
-                        instantiated = t(**v)
-                        # Recursively handle nested fields inside the created dataclass
-                        for sf in dataclasses.fields(t):
-                            sub_val = getattr(instantiated, sf.name)
-                            new_sub_val = self._handle_field_type(sub_val, sf.type)
-                            setattr(instantiated, sf.name, new_sub_val)
-                        elems.append(instantiated)
-                    else:
-                        elems.append(v)
-                value = tuple(elems)
+        # Handle tuple types (including tuples of dataclasses)
+        # YAML/JSON files represent tuples as lists, so we need to convert them
+        if origin in (tuple, typing.Tuple):
+            elem_types = getattr(arg_type, "__args__", [])
+            # Handle tuple of dataclasses
+            if all(dataclasses.is_dataclass(t) for t in elem_types):
+                if isinstance(value, list) and len(value) == len(elem_types):
+                    elems = []
+                    for t, v in zip(elem_types, value):
+                        if isinstance(v, dict):
+                            instantiated = t(**v)
+                            # Recursively handle nested fields inside the created dataclass
+                            for sf in dataclasses.fields(t):
+                                sub_val = getattr(instantiated, sf.name)
+                                new_sub_val = self._handle_field_type(sub_val, sf.type)
+                                setattr(instantiated, sf.name, new_sub_val)
+                            elems.append(instantiated)
+                        else:
+                            elems.append(v)
+                    value = tuple(elems)
+            # Handle regular tuples (non-dataclass element types)
+            # Convert list to tuple if value comes from config file (YAML/JSON)
+            elif isinstance(value, list):
+                # Convert each element to the expected type
+                if elem_types:
+                    converted = []
+                    for i, (v, t) in enumerate(zip(value, elem_types)):
+                        try:
+                            if t in (int, float, str, bool):
+                                converted.append(t(v))
+                            else:
+                                converted.append(v)
+                        except (ValueError, TypeError):
+                            converted.append(v)
+                    value = tuple(converted)
+                else:
+                    value = tuple(value)
         # Handle list of dataclasses
         elif (
             origin in (list, typing.List)
