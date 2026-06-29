@@ -1,5 +1,7 @@
 # DataclassArgParser
 
+[![CI](https://github.com/amirhosseindavoody/dataclass_argparser/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/amirhosseindavoody/dataclass_argparser/actions/workflows/ci.yml)
+
 A utility for creating command-line argument parsers from Python dataclasses.
 
 ## Overview
