@@ -2,7 +2,7 @@
 """
 Tests for DataclassArgParser with Pydantic BaseModel classes.
 
-Mirrors core tests from tests/test_parser.py for Pydantic model definitions.
+Mirrors core tests from ../test_parser.py for Pydantic model definitions.
 """
 
 import argparse
@@ -14,8 +14,6 @@ from typing import Literal
 from unittest.mock import patch
 
 import pytest
-
-pytest.importorskip("pydantic")
 
 from pydantic import BaseModel, Field
 
@@ -63,7 +61,7 @@ class RequiredTupleConfig(BaseModel):
     )
 
 
-class TestPydanticArgParser:
+class TestArgParser:
     """Test suite for DataclassArgParser with Pydantic models."""
 
     def test_initialization_single_model(self):

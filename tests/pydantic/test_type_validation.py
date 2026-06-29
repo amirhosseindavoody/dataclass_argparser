@@ -2,7 +2,7 @@
 """
 Tests for type validation in DataclassArgParser with Pydantic models.
 
-This module mirrors tests/test_type_validation.py but uses Pydantic BaseModel
+This module mirrors ../test_type_validation.py but uses Pydantic BaseModel
 classes. Validation is delegated to Pydantic rather than manual type checks.
 """
 
@@ -12,8 +12,6 @@ import tempfile
 import textwrap
 
 import pytest
-
-pytest.importorskip("pydantic")
 
 from pydantic import BaseModel, Field, ValidationError
 

@@ -2,7 +2,7 @@
 """
 Tests for DataclassArgParser config file functionality with Pydantic models.
 
-Mirrors tests/test_config_files.py for Pydantic BaseModel definitions.
+Mirrors ../test_config_files.py for Pydantic BaseModel definitions.
 """
 
 import json
@@ -10,10 +10,6 @@ import os
 import tempfile
 import textwrap
 from typing import Literal
-
-import pytest
-
-pytest.importorskip("pydantic")
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +41,7 @@ class TupleFieldConfig(BaseModel):
     )
 
 
-class TestPydanticConfigFiles:
+class TestConfigFiles:
     """Test suite for config file functionality with Pydantic models."""
 
     def test_json_config(self):

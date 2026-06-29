@@ -2,17 +2,13 @@
 """
 Tests for Optional type support in DataclassArgParser with Pydantic models.
 
-Mirrors tests/test_optional_types.py for Pydantic BaseModel definitions.
+Mirrors ../test_optional_types.py for Pydantic BaseModel definitions.
 """
 
 import json
 import os
 import tempfile
 from typing import Optional
-
-import pytest
-
-pytest.importorskip("pydantic")
 
 from pydantic import BaseModel, Field
 
@@ -50,7 +46,7 @@ class OptionalWithDefaultsConfig(BaseModel):
     )
 
 
-class TestPydanticOptionalTypes:
+class TestOptionalTypes:
     """Test suite for Optional type support with Pydantic models."""
 
     def test_optional_fields_with_none_default(self):

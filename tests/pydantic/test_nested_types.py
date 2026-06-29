@@ -2,14 +2,10 @@
 """
 Tests for nested Pydantic model support in DataclassArgParser.
 
-Mirrors tests/test_nested_types.py for Pydantic BaseModel definitions.
+Mirrors ../test_nested_types.py for Pydantic BaseModel definitions.
 """
 
 import json
-
-import pytest
-
-pytest.importorskip("pydantic")
 
 from pydantic import BaseModel, Field
 
