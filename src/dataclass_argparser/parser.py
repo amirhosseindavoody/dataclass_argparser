@@ -24,6 +24,82 @@ try:
 except ImportError:
     HAS_YAML = False
 
+try:
+    from pydantic import BaseModel
+    from pydantic_core import PydanticUndefined
+
+    HAS_PYDANTIC = True
+except ImportError:
+    HAS_PYDANTIC = False
+    BaseModel = None  # type: ignore[misc, assignment]
+    PydanticUndefined = None  # type: ignore[misc, assignment]
+
+
+@dataclasses.dataclass
+class _SchemaField:
+    """Unified field representation for dataclasses and Pydantic models."""
+
+    name: str
+    type: Any
+    default: Any = dataclasses.MISSING
+    default_factory: Any = dataclasses.MISSING
+    metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+
+def _is_pydantic_model(cls: Any) -> bool:
+    """Return True if cls is a Pydantic BaseModel subclass."""
+    if not HAS_PYDANTIC or BaseModel is None:
+        return False
+    try:
+        return isinstance(cls, type) and issubclass(cls, BaseModel)
+    except TypeError:
+        return False
+
+
+def _is_schema_class(cls: Any) -> bool:
+    """Return True if cls is a dataclass or Pydantic BaseModel."""
+    return dataclasses.is_dataclass(cls) or _is_pydantic_model(cls)
+
+
+def _get_schema_fields(cls: Type[Any]) -> list[_SchemaField]:
+    """Return unified field descriptors for a dataclass or Pydantic model."""
+    if _is_pydantic_model(cls):
+        fields: list[_SchemaField] = []
+        for name, field_info in cls.model_fields.items():
+            default = dataclasses.MISSING
+            default_factory = dataclasses.MISSING
+            if not field_info.is_required():
+                if field_info.default is not PydanticUndefined:
+                    default = field_info.default
+                elif field_info.default_factory is not None:
+                    default_factory = field_info.default_factory
+                else:
+                    default = None
+            metadata: dict[str, Any] = {}
+            if field_info.description:
+                metadata["help"] = field_info.description
+            fields.append(
+                _SchemaField(
+                    name=name,
+                    type=field_info.annotation,
+                    default=default,
+                    default_factory=default_factory,
+                    metadata=metadata,
+                )
+            )
+        return fields
+
+    return [
+        _SchemaField(
+            name=field.name,
+            type=field.type,
+            default=field.default,
+            default_factory=field.default_factory,
+            metadata=dict(field.metadata),
+        )
+        for field in dataclasses.fields(cls)
+    ]
+
 
 def _get_optional_inner_type(type_hint: Any) -> Optional[Any]:
     """
@@ -59,11 +135,16 @@ def _strict_bool(value: str) -> bool:
 
 class DataclassArgParser:
     """
-    A command-line argument parser that automatically generates arguments from dataclasses.
+    A command-line argument parser that automatically generates arguments from
+    dataclasses or Pydantic BaseModel classes.
 
-    This class takes one or more dataclass types and creates an argparse.ArgumentParser
-    with arguments corresponding to each field in the dataclasses. Help text is extracted
-    from the 'help' key in field metadata, and metavars are generated based on field types.
+    This class takes one or more dataclass or Pydantic model types and creates
+    an argparse.ArgumentParser with arguments corresponding to each field.
+    Help text is extracted from the 'help' key in dataclass field metadata or
+    from Pydantic Field descriptions, and metavars are generated based on field types.
+
+    For Pydantic models, field validation is delegated to Pydantic's model_validate()
+    instead of the built-in manual type validation.
 
     Supports loading configuration from YAML or JSON files via the --config argument.
 
@@ -76,6 +157,12 @@ class DataclassArgParser:
         parser = DataclassArgParser(Config)
         result = parser.parse()
         config = result['Config']
+
+        # Or with Pydantic:
+        # from pydantic import BaseModel, Field
+        # class Config(BaseModel):
+        #     name: str = Field(default="test", description="The name to use")
+        #     count: int = Field(default=5, description="Number of items")
 
         # Or load from config file:
         # python script.py --config config.yaml
@@ -91,8 +178,16 @@ class DataclassArgParser:
         Initialize the DataclassArgParser with one or more dataclass types.
 
         Args:
-            *dataclass_types: One or more dataclass types to generate arguments from.
+            *dataclass_types: One or more dataclass or Pydantic BaseModel types to
+                generate arguments from.
         """
+        for cls in dataclass_types:
+            if not _is_schema_class(cls):
+                raise TypeError(
+                    f"{getattr(cls, '__name__', cls)!r} must be a dataclass or "
+                    "Pydantic BaseModel"
+                )
+
         self.dataclass_types: tuple[Type[Any], ...] = dataclass_types
         self.parser: argparse.ArgumentParser = argparse.ArgumentParser()
         # store the requested option string(s) for the config file flag so it
@@ -482,8 +577,8 @@ class DataclassArgParser:
 
         return parse_dict
 
-    def _get_field_default(self, field: dataclasses.Field) -> Any:
-        """Extract the default value from a dataclass field."""
+    def _get_field_default(self, field: _SchemaField) -> Any:
+        """Extract the default value from a schema field."""
         if field.default is not dataclasses.MISSING:
             return field.default
         elif field.default_factory is not dataclasses.MISSING:
@@ -541,15 +636,15 @@ class DataclassArgParser:
         """
         prefix = prefix or cls.__name__
 
-        for field in dataclasses.fields(cls):
+        for field in _get_schema_fields(cls):
             self._add_field_argument(field, prefix)
 
-    def _add_field_argument(self, field: dataclasses.Field, prefix: str) -> None:
+    def _add_field_argument(self, field: _SchemaField, prefix: str) -> None:
         """
-        Add a CLI argument for a single dataclass field.
+        Add a CLI argument for a single schema field.
 
         Args:
-            field: The dataclass field to process.
+            field: The schema field to process.
             prefix: The argument prefix for this field.
         """
         arg_name = f"--{prefix}.{field.name}"
@@ -565,8 +660,8 @@ class DataclassArgParser:
             field.metadata.get("help", ""), default_value
         )
 
-        # Handle nested dataclass (recurse)
-        if self._is_nested_dataclass(arg_type, default_value):
+        # Handle nested schema class (recurse)
+        if self._is_nested_schema_class(arg_type, default_value):
             self._add_fields_for_class(
                 cast(Type[Any], arg_type), prefix=f"{prefix}.{field.name}"
             )
@@ -585,11 +680,13 @@ class DataclassArgParser:
             metavar=metavar,
         )
 
+    def _is_nested_schema_class(self, arg_type: Any, default_value: Any) -> bool:
+        """Check if a type represents a nested schema class to recurse into."""
+        return _is_schema_class(arg_type) and not isinstance(default_value, type)
+
     def _is_nested_dataclass(self, arg_type: Any, default_value: Any) -> bool:
-        """Check if a type represents a nested dataclass that should be recursed into."""
-        return dataclasses.is_dataclass(arg_type) and not isinstance(
-            default_value, type
-        )
+        """Backward-compatible alias for :meth:`_is_nested_schema_class`."""
+        return self._is_nested_schema_class(arg_type, default_value)
 
     def _try_add_generic_type_argument(
         self, arg_name: str, arg_type: Any, description: str
@@ -674,8 +771,8 @@ class DataclassArgParser:
         for cls in self.dataclass_types:
             instance = self._build_instance(cls, parsed_args, config_data)
             result[cls.__name__] = instance
-            # Collect all dataclass argument keys
-            for field in dataclasses.fields(cls):
+            # Collect all schema argument keys
+            for field in _get_schema_fields(cls):
                 dataclass_field_names.add(f"{cls.__name__}.{field.name}")
 
         # Add custom flags (not associated with dataclass fields)
@@ -720,7 +817,8 @@ class DataclassArgParser:
         config_section = config_section or config_data.get(cls.__name__, {})
         values = {}
         missing_fields = []
-        for field in dataclasses.fields(cls):
+        is_pydantic = _is_pydantic_model(cls)
+        for field in _get_schema_fields(cls):
             field_name = field.name
             arg_key = f"{prefix}.{field_name}"
             arg_type = field.type if field.type is not dataclasses.MISSING else str
@@ -729,11 +827,11 @@ class DataclassArgParser:
                 field, arg_key, arg_type, config_section, parsed_args, config_data
             )
 
-            # Type-specific handling
-            value = self._handle_field_type(value, arg_type)
-
-            # Validate type (for config file values; CLI values are validated by argparse)
-            self._validate_type(value, arg_type, f"{prefix}.{field_name}")
+            # Type-specific handling (dataclasses only; Pydantic validates at instantiation)
+            if not is_pydantic:
+                value = self._handle_field_type(value, arg_type)
+                # Validate type (for config file values; CLI values are validated by argparse)
+                self._validate_type(value, arg_type, f"{prefix}.{field_name}")
 
             if value is dataclasses.MISSING:
                 missing_fields.append(f"--{arg_key}")
@@ -746,11 +844,13 @@ class DataclassArgParser:
                 f"These must be provided either as command-line arguments or in the config file."
             )
             self.parser.error(error_msg)
+        if is_pydantic:
+            return cls.model_validate(values)
         return cls(**values)
 
     def _resolve_field_value(
         self,
-        field: dataclasses.Field,
+        field: _SchemaField,
         arg_key: str,
         arg_type: Any,
         config_section: dict[str, Any],
@@ -783,7 +883,7 @@ class DataclassArgParser:
         if inner_type is not None:
             actual_type = inner_type
 
-        if dataclasses.is_dataclass(actual_type):
+        if _is_schema_class(actual_type):
             nested_config = (
                 config_section.get(field.name, {})
                 if isinstance(config_section, dict)
@@ -824,13 +924,15 @@ class DataclassArgParser:
 
         origin = getattr(arg_type, "__origin__", None)
 
-        # Handle Optional[DataClass] - convert dict to dataclass instance
+        # Handle Optional[SchemaClass] - convert dict to instance
         inner_type = _get_optional_inner_type(arg_type)
-        if inner_type is not None and dataclasses.is_dataclass(inner_type):
+        if inner_type is not None and _is_schema_class(inner_type):
             if isinstance(value, dict):
+                if _is_pydantic_model(inner_type):
+                    return inner_type.model_validate(value)
                 instantiated = inner_type(**value)
                 # Recursively handle nested fields inside the created dataclass
-                for sf in dataclasses.fields(inner_type):
+                for sf in _get_schema_fields(inner_type):
                     sub_val = getattr(instantiated, sf.name)
                     new_sub_val = self._handle_field_type(sub_val, sf.type)
                     setattr(instantiated, sf.name, new_sub_val)
@@ -841,19 +943,22 @@ class DataclassArgParser:
         # YAML/JSON files represent tuples as lists, so we need to convert them
         if origin in (tuple, typing.Tuple):
             elem_types = getattr(arg_type, "__args__", [])
-            # Handle tuple of dataclasses
-            if all(dataclasses.is_dataclass(t) for t in elem_types):
+            # Handle tuple of schema classes
+            if all(_is_schema_class(t) for t in elem_types):
                 if isinstance(value, list) and len(value) == len(elem_types):
                     elems = []
                     for t, v in zip(elem_types, value):
                         if isinstance(v, dict):
-                            instantiated = t(**v)
-                            # Recursively handle nested fields inside the created dataclass
-                            for sf in dataclasses.fields(t):
-                                sub_val = getattr(instantiated, sf.name)
-                                new_sub_val = self._handle_field_type(sub_val, sf.type)
-                                setattr(instantiated, sf.name, new_sub_val)
-                            elems.append(instantiated)
+                            if _is_pydantic_model(t):
+                                elems.append(t.model_validate(v))
+                            else:
+                                instantiated = t(**v)
+                                # Recursively handle nested fields inside the created dataclass
+                                for sf in _get_schema_fields(t):
+                                    sub_val = getattr(instantiated, sf.name)
+                                    new_sub_val = self._handle_field_type(sub_val, sf.type)
+                                    setattr(instantiated, sf.name, new_sub_val)
+                                elems.append(instantiated)
                         else:
                             elems.append(v)
                     value = tuple(elems)
@@ -878,20 +983,23 @@ class DataclassArgParser:
         elif (
             origin in (list, typing.List)
             and len(getattr(arg_type, "__args__", [])) == 1
-            and dataclasses.is_dataclass(arg_type.__args__[0])
+            and _is_schema_class(arg_type.__args__[0])
         ):
             elem_type = arg_type.__args__[0]
             if isinstance(value, list):
                 new_list = []
                 for v in value:
                     if isinstance(v, dict):
-                        instantiated = elem_type(**v)
-                        # Recursively handle nested fields inside the created dataclass
-                        for sf in dataclasses.fields(elem_type):
-                            sub_val = getattr(instantiated, sf.name)
-                            new_sub_val = self._handle_field_type(sub_val, sf.type)
-                            setattr(instantiated, sf.name, new_sub_val)
-                        new_list.append(instantiated)
+                        if _is_pydantic_model(elem_type):
+                            new_list.append(elem_type.model_validate(v))
+                        else:
+                            instantiated = elem_type(**v)
+                            # Recursively handle nested fields inside the created dataclass
+                            for sf in _get_schema_fields(elem_type):
+                                sub_val = getattr(instantiated, sf.name)
+                                new_sub_val = self._handle_field_type(sub_val, sf.type)
+                                setattr(instantiated, sf.name, new_sub_val)
+                            new_list.append(instantiated)
                     else:
                         new_list.append(v)
                 value = new_list
@@ -923,8 +1031,10 @@ class DataclassArgParser:
                 return
             arg_type = inner_type
 
-        # Skip validation for nested dataclasses (they are handled separately)
-        if dataclasses.is_dataclass(arg_type) and not isinstance(arg_type, type):
+        # Skip validation for nested schema classes (handled at instantiation)
+        if _is_schema_class(arg_type) and not isinstance(arg_type, type):
+            return
+        if _is_pydantic_model(arg_type):
             return
 
         # Handle basic types
@@ -1018,7 +1128,7 @@ class DataclassArgParser:
         """
         vals = {}
         missing_fields = []
-        for f in dataclasses.fields(cls_nested):
+        for f in _get_schema_fields(cls_nested):
             k_cli = f"{prefix_nested}.{f.name}"
             # CLI
             if k_cli in parsed_args and parsed_args[k_cli] is not None:
@@ -1048,4 +1158,6 @@ class DataclassArgParser:
                 f"These must be provided either as command-line arguments or in the config file."
             )
             self.parser.error(error_msg)
+        if _is_pydantic_model(cls_nested):
+            return cls_nested.model_validate(vals)
         return cls_nested(**vals)

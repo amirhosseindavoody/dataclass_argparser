@@ -26,8 +26,9 @@ requires-python = ">=3.9"
 version = "2026.6.17.0"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "PyYAML"]
-test = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "PyYAML", "pydantic"]
+pydantic = ["pydantic>=2.0"]
+test = ["pytest", "pytest-cov", "pydantic"]
 yaml = ["PyYAML"]
 
 [project.urls]
