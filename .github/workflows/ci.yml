@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  PIXI_VERSION: v0.71.2
+  PIXI_VERSION: v0.71.0
 
 jobs:
   test:
@@ -31,7 +31,6 @@ jobs:
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
           cache: true
-          frozen: true
 
       - name: Run tests
         run: pixi run test
@@ -63,7 +62,6 @@ jobs:
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
           cache: true
-          frozen: true
 
       - name: Build package with pixi-build
         run: pixi run build
@@ -99,7 +97,6 @@ jobs:
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
           cache: true
-          frozen: true
 
       - name: Run example tests
         run: pixi run test-all
