@@ -2,7 +2,7 @@
 """
 Tests for DataclassArgParser with Pydantic BaseModel classes.
 
-Mirrors core tests from ../test_parser.py for Pydantic model definitions.
+Mirrors core tests from ../dataclass/test_parser.py for Pydantic model definitions.
 """
 
 import argparse

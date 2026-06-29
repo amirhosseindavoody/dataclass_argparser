@@ -2,7 +2,7 @@
 """
 Tests for DataclassArgParser config file functionality with Pydantic models.
 
-Mirrors ../test_config_files.py for Pydantic BaseModel definitions.
+Mirrors ../dataclass/test_config_files.py for Pydantic BaseModel definitions.
 """
 
 import json

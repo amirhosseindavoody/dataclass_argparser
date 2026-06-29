@@ -2,7 +2,7 @@
 """
 Tests for Optional type support in DataclassArgParser with Pydantic models.
 
-Mirrors ../test_optional_types.py for Pydantic BaseModel definitions.
+Mirrors ../dataclass/test_optional_types.py for Pydantic BaseModel definitions.
 """
 
 import json
