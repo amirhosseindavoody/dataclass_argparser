@@ -17,6 +17,7 @@ pytest-cov = ">=6.0.0,<7"
 python-build = ">=1.0.0,<2"
 result = ">=0.17.0,<0.18"
 twine = ">=5.1.0"
+pydantic = ">=2.13.4,<3"
 
 [tasks]
 # Testing tasks

@@ -2,13 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  PIXI_VERSION: v0.71.0
 
 jobs:
   test:
@@ -20,30 +23,30 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Pixi
-      uses: prefix-dev/setup-pixi@v0.9.6
-      with:
-        pixi-version: v0.70.2
-        cache: true
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          cache: true
 
-    - name: Run tests
-      run: pixi run test-verbose
+      - name: Run tests
+        run: pixi run test
 
-    - name: Run test coverage
-      run: pixi run test-coverage
-      if: matrix.os == 'ubuntu-latest'
+      - name: Run test coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: pixi run test-coverage
 
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v4
-      if: matrix.os == 'ubuntu-latest'
-      with:
-        files: ./coverage.xml
-        fail_ci_if_error: false
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage reports
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: Build package
@@ -51,34 +54,34 @@ jobs:
     needs: test
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Pixi
-      uses: prefix-dev/setup-pixi@v0.9.6
-      with:
-        pixi-version: v0.70.2
-        cache: true
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          cache: true
 
-    - name: Build package with pixi-build
-      run: pixi run build
+      - name: Build package with pixi-build
+        run: pixi run build
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: dist
-        path: dist/
-        retention-days: 7
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
 
-    - name: Build PyPI package
-      run: pixi run build-pypi
+      - name: Build PyPI package
+        run: pixi run build-pypi
 
-    - name: Upload PyPI artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: pypi-dist
-        path: dist/
-        retention-days: 7
+      - name: Upload PyPI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/
+          retention-days: 7
 
   examples:
     name: Test examples
@@ -86,14 +89,14 @@ jobs:
     needs: test
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Pixi
-      uses: prefix-dev/setup-pixi@v0.9.6
-      with:
-        pixi-version: v0.70.2
-        cache: true
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          cache: true
 
-    - name: Run all example tests
-      run: pixi run test-all
+      - name: Run example tests
+        run: pixi run test-all
