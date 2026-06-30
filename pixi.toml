@@ -33,6 +33,7 @@ run-override-example = "python examples/override_example.py --help"
 build = "pixi build --clean --output-dir dist/"
 build-pypi = "python -m build"
 clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/ htmlcov/"
+update-version = "scripts/update_version.sh"
 
 [tasks.test-all]
 cmd = """
