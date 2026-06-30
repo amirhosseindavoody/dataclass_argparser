@@ -1,6 +1,6 @@
 # Releasing dataclass-argparser
 
-This project publishes to **PyPI** (automated) and **conda-forge** (manual feedstock PR).
+This project publishes to **PyPI** (automated on GitHub Release) and **conda-forge** (bot PR from PyPI, with manual fallback).
 
 ## Prerequisites
 
@@ -8,6 +8,7 @@ This project publishes to **PyPI** (automated) and **conda-forge** (manual feeds
 - [pixi](https://pixi.sh/) installed
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
 - Push access to `main` and permission to create releases
+- [Trusted publishing](https://docs.pypi.org/trusted-publishers/) configured on PyPI for this repo and the `pypi` GitHub environment
 
 ## Quick release
 
@@ -43,10 +44,12 @@ Options:
 | Step | How |
 | --- | --- |
 | Version bump | `scripts/update_version.sh` (CalVer `YYYY.M.D.N`) |
-| PyPI upload | `.github/workflows/publish.yml` when a GitHub Release is **published** |
-| conda-forge | **Not automatic** — you open a feedstock PR after PyPI |
+| PyPI upload | `.github/workflows/publish.yml` when a GitHub Release is **published** (checks out the release tag and verifies it matches `pyproject.toml`) |
+| conda-forge | `@regro-cf-autotick-bot` opens a feedstock PR after PyPI; merge when CI passes |
 
 PyPI uses [trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC). No API token is stored in the repo.
+
+The publish workflow runs **only** on published GitHub Releases — not on tag push alone and not via manual dispatch.
 
 ## Release checklist
 
@@ -55,11 +58,38 @@ PyPI uses [trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC)
 [ ] ./release.sh  (or manual steps above)
 [ ] "Publish to PyPI" workflow succeeded
 [ ] New version visible on https://pypi.org/project/dataclass-argparser/
-[ ] Feedstock PR merged on conda-forge/dataclass-argparser-feedstock
+[ ] @regro-cf-autotick-bot feedstock PR merged (or manual feedstock PR if bot is slow)
 [ ] conda install -c conda-forge dataclass-argparser picks up the version
 ```
 
-## conda-forge (after every PyPI release)
+## conda-forge (after PyPI)
+
+The feedstock at [conda-forge/dataclass-argparser-feedstock](https://github.com/conda-forge/dataclass-argparser-feedstock) uses a **PyPI source URL**, so `@regro-cf-autotick-bot` polls PyPI and should open a version-bump PR automatically after each new release.
+
+What to do after PyPI finishes:
+
+1. Watch the feedstock for a bot PR titled like `dataclass-argparser v2026.6.30.0`.
+2. Merge it when CI is green (`bot.automerge: version` is enabled on the feedstock).
+3. If no bot PR appears after several hours, open a manual feedstock PR (fallback below).
+
+### Feedstock bot configuration
+
+The feedstock is already set up correctly for PyPI detection:
+
+- `recipe/recipe.yaml` uses a PyPI sdist URL (`pypi.org/packages/source/...`)
+- `conda_build_tool: rattler-build` with v1 `recipe.yaml` (supported by `@regro-cf-autotick-bot`)
+
+No extra bot config is required for the bot to **detect** new PyPI versions. To reduce manual work, add this to the feedstock’s `conda-forge.yml` and merge via PR on the feedstock repo:
+
+```yaml
+bot:
+  automerge: version
+  inspection: hint-grayskull
+```
+
+That keeps automatic version PRs and merges them when CI passes. You (as feedstock maintainer) need to open that PR on [conda-forge/dataclass-argparser-feedstock](https://github.com/conda-forge/dataclass-argparser-feedstock) — it cannot be changed from this source repo.
+
+### Manual feedstock PR (fallback)
 
 The feedstock downloads the **sdist from PyPI**, so PyPI must finish first.
 
@@ -97,9 +127,9 @@ PyPI versions are immutable. To ship a fix the same day, bump with `pixi run upd
 | Part | Automate in CI? | Recommendation |
 | --- | --- | --- |
 | Tests on every push/PR | Yes | Already done (`.github/workflows/ci.yml`) |
-| Build + upload to PyPI on release | Yes | Already done (`.github/workflows/publish.yml`) |
-| Version bump + tag + GitHub Release | Possible (`workflow_dispatch`) | Optional; many teams keep this manual or semi-manual |
-| conda-forge feedstock update | Possible but uncommon | Keep manual unless you invest in bot/automation |
+| Build + upload to PyPI on GitHub Release | Yes | Done in `.github/workflows/publish.yml` |
+| Version bump + tag + GitHub Release | Local `./release.sh` | Human gate for when to release |
+| conda-forge feedstock update | Bot PR from PyPI | Enabled on feedstock; merge bot PRs |
 
 ### What works well as GitHub Actions
 
@@ -114,10 +144,9 @@ PyPI versions are immutable. To ship a fix the same day, bump with `pixi run upd
 
 ### Practical recommendation for this repo
 
-1. **Keep PyPI publish in CI** (already set up).
-2. **Keep `./release.sh` (or manual steps) for the human gate** — you decide when to release.
-3. **Keep conda-forge as a short manual follow-up** — one feedstock PR per release; later you can rely on [regro-cd](https://github.com/regro/regro-cd) if the bot starts opening PRs when it detects new PyPI versions.
-4. **Optional later improvement:** add a `workflow_dispatch` job that only runs tests + builds artifacts as a pre-release smoke check, without changing version or pushing tags.
+1. **PyPI publish on GitHub Release** — automated in CI.
+2. **`./release.sh` for the human gate** — you decide when to release.
+3. **conda-forge via bot PR** — merge `@regro-cf-autotick-bot` PRs; use manual feedstock PR only as fallback.
 
 ## Troubleshooting
 
@@ -134,6 +163,12 @@ PyPI versions are immutable. To ship a fix the same day, bump with `pixi run upd
 **Tag already exists**
 
 - Do not reuse tags. Bump the version and create a new tag.
+
+**No conda-forge bot PR**
+
+- Confirm the new version is on PyPI first.
+- Check open PRs on [conda-forge/dataclass-argparser-feedstock](https://github.com/conda-forge/dataclass-argparser-feedstock).
+- If the bot is stuck, open a manual feedstock PR (see fallback above).
 
 **conda-forge build failed**
 
