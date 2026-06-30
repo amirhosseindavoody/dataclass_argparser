@@ -1,56 +1,131 @@
 #!/usr/bin/env bash
+#
+# Bump CalVer, commit, tag, and publish a GitHub Release.
+# Publishing the release triggers .github/workflows/publish.yml (PyPI upload).
+#
+# Usage:
+#   ./release.sh
+#   ./release.sh --notes CHANGELOG.md
+#   ./release.sh --dry-run
+#
+# After PyPI finishes, update the conda-forge feedstock (see RELEASING.md).
 
 set -euo pipefail
 
-# Get the project root directory (where this script is located)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYPROJECT_FILE="$SCRIPT_DIR/pyproject.toml"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYPROJECT="$ROOT/pyproject.toml"
+NOTES=""
+DRY_RUN=0
 
-# Update version using shared script
-"$SCRIPT_DIR/scripts/update_version.sh"
+usage() {
+    sed -n '2,12p' "$0" | sed 's/^# \?//'
+}
 
-# Get the new version for tagging
-NEW_VERSION=$(grep '^version = ' "$PYPROJECT_FILE" | sed 's/version = "\(.*\)"/\1/')
-TAG_NAME="v$NEW_VERSION"
+log() {
+    echo "==> $*"
+}
 
-# Commit the version change
-git add "$PYPROJECT_FILE" "$SCRIPT_DIR/pixi.toml" "$SCRIPT_DIR/pixi.lock"
-git commit -m "Bump version to $NEW_VERSION" || echo "No changes to commit (version already up to date)"
-git push
+run() {
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[dry-run] $*"
+    else
+        "$@"
+    fi
+}
 
-echo "Creating release tag: $TAG_NAME"
+die() {
+    echo "error: $*" >&2
+    exit 1
+}
 
-# Check if tag exists and delete it if it does
-if git tag -l "$TAG_NAME" | grep -q "$TAG_NAME"; then
-    echo "Tag $TAG_NAME already exists. Removing it..."
-    git tag -d "$TAG_NAME"
-    # Also delete from remote if it exists
-    git push origin ":refs/tags/$TAG_NAME" 2>/dev/null || true
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        --notes)
+            [[ $# -ge 2 ]] || die "--notes requires a file path"
+            NOTES="$2"
+            [[ -f "$NOTES" ]] || die "release notes file not found: $NOTES"
+            shift 2
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown option: $1 (try --help)"
+            ;;
+    esac
+done
+
+require_command git
+require_command gh
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+    require_command pixi
 fi
 
-# Create and push the new tag
-git tag "$TAG_NAME"
-git push origin "$TAG_NAME"
+cd "$ROOT"
 
-# Create/update the 'latest' tag to point to this release
-echo "Creating/updating 'latest' tag..."
-# Remove existing 'latest' tag if it exists
-if git tag -l "latest" | grep -q "latest"; then
-    git tag -d "latest"
-    git push origin ":refs/tags/latest" 2>/dev/null || true
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    die "working tree is not clean; commit or stash changes before releasing"
 fi
 
-# Create new 'latest' tag pointing to the same commit as the dated tag
-git tag "latest"
-git push origin "latest"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$BRANCH" != "main" ]]; then
+    die "releases must be cut from main (current branch: $BRANCH)"
+fi
 
-# Create GitHub release using gh CLI
-echo "Creating GitHub release..."
-gh release create "$TAG_NAME" \
-    --title "Release $TAG_NAME" \
-    --notes "Automated release for $(date +%Y-%m-%d)" \
-    --latest
+log "Bumping CalVer version"
+run "$ROOT/scripts/update_version.sh"
 
-echo "Release $TAG_NAME created successfully!"
-echo "Tag 'latest' now points to $TAG_NAME"
+VERSION="$(grep '^version = ' "$PYPROJECT" | sed 's/version = "\(.*\)"/\1/')"
+TAG="v${VERSION}"
 
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+    die "tag $TAG already exists locally; pick a new version or delete the tag manually"
+fi
+
+if [[ "$DRY_RUN" -eq 0 ]] && git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+    die "tag $TAG already exists on origin"
+fi
+
+if git status --porcelain -- pyproject.toml pixi.toml pixi.lock | grep -q .; then
+    log "Committing version bump"
+    run git add pyproject.toml pixi.toml pixi.lock
+    run git commit -m "Bump version to ${VERSION}"
+    run git push origin main
+else
+    log "Version files unchanged; using existing version ${VERSION}"
+fi
+
+log "Creating tag ${TAG}"
+run git tag -a "$TAG" -m "Release ${TAG}"
+run git push origin "$TAG"
+
+RELEASE_NOTES="${NOTES:-Release ${TAG} ($(date +%Y-%m-%d))}"
+
+log "Creating GitHub release ${TAG}"
+if [[ -n "$NOTES" ]]; then
+    run gh release create "$TAG" --title "Release ${TAG}" --notes-file "$NOTES"
+else
+    run gh release create "$TAG" --title "Release ${TAG}" --notes "$RELEASE_NOTES"
+fi
+
+cat <<EOF
+
+Release started: ${TAG}
+
+Next steps:
+  1. Wait for the "Publish to PyPI" workflow to finish on GitHub Actions.
+  2. Confirm the sdist on https://pypi.org/project/dataclass-argparser/${VERSION}/
+  3. Open a PR on https://github.com/conda-forge/dataclass-argparser-feedstock
+     with the new version and sdist sha256 (see RELEASING.md).
+
+EOF

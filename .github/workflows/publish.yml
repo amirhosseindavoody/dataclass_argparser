@@ -3,10 +3,14 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
-  workflow_dispatch:
 
 permissions:
+  contents: read
   id-token: write
+
+concurrency:
+  group: pypi-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -17,19 +21,32 @@ jobs:
       url: https://pypi.org/p/dataclass-argparser
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
-    - name: Setup Pixi
-      uses: prefix-dev/setup-pixi@v0.9.6
-      with:
-        pixi-version: v0.71.0
-        cache: true
+      - name: Verify tag matches package version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          PYPROJECT_VERSION="$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')"
+          if [[ "$PYPROJECT_VERSION" != "$VERSION" ]]; then
+            echo "Tag version ($VERSION) does not match pyproject.toml ($PYPROJECT_VERSION)."
+            exit 1
+          fi
+          echo "Publishing version ${VERSION} from tag ${TAG}"
 
-    - name: Build PyPI package
-      run: pixi run build-pypi
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          pixi-version: v0.71.0
+          cache: true
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        packages-dir: dist/
+      - name: Build PyPI package
+        run: pixi run build-pypi
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
